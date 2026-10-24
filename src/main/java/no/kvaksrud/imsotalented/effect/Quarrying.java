@@ -45,9 +45,9 @@ import net.fabricmc.fabric.api.tag.convention.v2.ConventionalBlockTags;
  *     Switching tools, spawn protection and other mods' break checks stop or skip blocks as for any break.</li>
  * </ul>
  *
- * <p>All server side: the client already sends the sneak key with its movement input, so a client without the mod
- * quarries too. The wrap of {@code ServerPlayerGameMode.destroyBlock} ({@code ServerPlayerGameModeMixin}) hands every
- * block a player breaks to {@link #destroyBlock}, and {@code BlockMixin} moves the drops through {@link #gather}.
+ * <p>All server side: the client already sends the sneak key with its movement input. The wrap of
+ * {@code ServerPlayerGameMode.destroyBlock} ({@code ServerPlayerGameModeMixin}) hands every block a player breaks to
+ * {@link #destroyBlock}, and {@code BlockMixin} moves the drops through {@link #gather}.
  */
 public final class Quarrying {
 	/** How far in front of the player's eyes the drops land, if nothing is in the way. */

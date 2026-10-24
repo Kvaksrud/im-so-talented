@@ -16,12 +16,10 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import no.kvaksrud.imsotalented.ImSoTalented;
 import no.kvaksrud.imsotalented.ImSoTalentedConfig;
 import no.kvaksrud.imsotalented.client.ImSoTalentedClientConfig;
-import no.kvaksrud.imsotalented.client.QuarryClient;
 import no.kvaksrud.imsotalented.client.TalentClient;
 import no.kvaksrud.imsotalented.client.TalentScreen;
 import no.kvaksrud.imsotalented.client.TreeXpHud;
 import no.kvaksrud.imsotalented.client.inventory.BackpackScreen;
-import no.kvaksrud.imsotalented.effect.Quarrying;
 import no.kvaksrud.imsotalented.effect.TreeXp;
 import no.kvaksrud.imsotalented.inventory.Backpack;
 import no.kvaksrud.imsotalented.inventory.Backpacks;
@@ -88,7 +86,7 @@ import net.fabricmc.loader.api.FabricLoader;
  * the forward key and entering new chunks for Explorer, each with a control that earns nothing); the HUD bar (a flash
  * after earning, the pin button). Then with every talent at its top level: the attribute talents; toggling (command
  * and right-click); the three farming talents; Step Assist (attribute and a real walk up a block), Reach and Swim
- * Speed; mining speed under both stacking rules; Quarrying (the Quarry key held while mining an ore); More Luck; weapon
+ * Speed; mining speed under both stacking rules; Quarrying (sneaking while mining an ore); More Luck; weapon
  * damage; Block Chance; the backpack (pickup overflow, Shift + inventory key in game and from the inventory,
  * shrinking, and the plain inventory without the talent); the inventory buttons; death and respawn; and a save and
  * reload. Screenshots land in build/run/clientGameTest/screenshots (prefixed ist_).
@@ -1035,16 +1033,22 @@ public class ImSoTalentedClientGameTest implements FabricClientGameTest {
 
 	/** Where the test vein starts: the ore in front of home at eye level. It runs four coal ores away from the player. */
 	private static final BlockPos VEIN_START = new BlockPos(0, -59, 2);
+	/**
+	 * Where the player mines the vein from: four blocks back from its first ore, facing it. Quarry drops land a block in
+	 * front of the eyes (z -0.5) and get picked up, while the coal a plain break scatters around its ore (up to about
+	 * 0.75 blocks from z 2.5) stays out of the player's reach, so the two are told apart by {@link #QUARRY_DROP_LINE}.
+	 */
+	private static final String QUARRY_SPOT = "tp @p 0.5 -60 -1.5 0 0";
+	private static final double QUARRY_DROP_LINE = 0.75;
 
 	/**
-	 * Quarrying, with the Quarry key (Q) held on the client while an ore is mined. Level 1 takes the connected ore of the
+	 * Quarrying, sneaking (the sneak key held on the client) while an ore is mined. Level 1 takes the connected ore of the
 	 * same kind within the 3x3x3 cube around it: of the line of four coal ores, the first two; the iron ore and the stone
-	 * beside it stay. Without the key only the mined ore goes, and its coal drops at the ore. The top level takes the
-	 * whole line, its last ore a deepslate coal ore (the same kind of ore, another block). Every ore broken pays Gatherer XP, and every drop lands in front of the player. A pickaxe with 3
-	 * durability left takes two ores and stops at 1, still in hand. Q is vanilla's Drop key too: with the talent and a
-	 * pickaxe it quarries and keeps the pickaxe, and without the talent it drops it as always. Careful Hands, More Luck
-	 * and Gatherer XP are off here, so every ore wears the tool by exactly 1, drops exactly 1 coal and pays exactly 5;
-	 * {@code /talents max} puts them back.
+	 * beside it stay. Without sneaking only the mined ore goes, and its coal drops at the ore. The top level takes the
+	 * whole line, its last ore a deepslate coal ore (the same kind of ore, another block). Every ore broken pays Gatherer
+	 * XP, and every drop lands in front of the player. A pickaxe with 3 durability left takes two ores and stops at 1,
+	 * still in hand. Careful Hands, More Luck and Gatherer XP are off here, so every ore wears the tool by exactly 1, drops
+	 * exactly 1 coal and pays exactly 5; {@code /talents max} puts them back.
 	 */
 	private static void quarrying(ClientGameTestContext context, TestSingleplayerContext singleplayer) {
 		for (String talent : List.of("careful_hands", "more_luck", "gatherer_xp")) {
@@ -1053,17 +1057,13 @@ public class ImSoTalentedClientGameTest implements FabricClientGameTest {
 
 		// A Gatherer tree with room to earn: /talents max left it at its top level.
 		singleplayer.getServer().runCommand("talents xp @p gatherer set 0");
-		singleplayer.getServer().runCommand(HOME);
-		context.waitTicks(5);
 
 		singleplayer.getServer().runCommand("talents set @p quarrying 1");
 		check(quarry(context, singleplayer, true, new ItemStack(Items.DIAMOND_PICKAXE)) == 2,
 				"Quarrying I should take the mined ore and the one next to it in the 3x3x3 cube");
-		check(context.computeOnClient(client -> client.player.getMainHandItem().is(Items.DIAMOND_PICKAXE)),
-				"With the talent and a pickaxe, the Quarry key must not drop the pickaxe");
 
 		singleplayer.getServer().runCommand("talents set @p quarrying " + Talent.QUARRYING.maxLevel());
-		check(quarry(context, singleplayer, false, new ItemStack(Items.DIAMOND_PICKAXE)) == 1, "Without the Quarry key only the mined ore goes");
+		check(quarry(context, singleplayer, false, new ItemStack(Items.DIAMOND_PICKAXE)) == 1, "Without sneaking only the mined ore goes");
 		check(quarry(context, singleplayer, true, new ItemStack(Items.DIAMOND_PICKAXE)) == 4,
 				"The top level should take the whole vein, the deepslate coal ore at its end too");
 
@@ -1076,15 +1076,10 @@ public class ImSoTalentedClientGameTest implements FabricClientGameTest {
 					"Quarrying should leave the pickaxe in hand with 1 durability, got " + held);
 		});
 
-		// Without the talent, Q is the Drop key as always.
-		singleplayer.getServer().runCommand("talents set @p quarrying 0");
-		holdInMainHand(context, singleplayer, new ItemStack(Items.DIAMOND_PICKAXE));
-		context.getInput().pressKey(QuarryClient.QUARRY_KEY);
-		singleplayer.getServer().waitFor(_ -> player(singleplayer).getMainHandItem().isEmpty(), 40);
-
 		singleplayer.getServer().runCommand("talents max @p");
 		singleplayer.getServer().runCommand("kill @e[type=item]");
 		singleplayer.getServer().runCommand("clear @p");
+		singleplayer.getServer().runCommand(HOME);
 		singleplayer.getServer().runOnServer(_ -> {
 			ServerLevel level = player(singleplayer).level();
 
@@ -1099,15 +1094,15 @@ public class ImSoTalentedClientGameTest implements FabricClientGameTest {
 
 	/**
 	 * Lays the test vein (three coal ores and a deepslate coal ore in a line away from home, an iron ore and a stone
-	 * beside the first), mines its
-	 * first ore from the client with this tool, with or without the Quarry key held, and returns how many coal ores
-	 * broke. Checks what every quarry must do: the iron ore and the stone stay, every broken ore paid its Gatherer XP,
+	 * beside the first), mines its first ore from the client with this tool, sneaking or not, and returns how many coal
+	 * ores broke. Checks what every break must do: the iron ore and the stone stay, every broken ore paid its Gatherer XP,
 	 * and every coal is in front of the player (picked up or on the ground there), none left at the ores, unless the
-	 * key wasn't held: then the one coal drops at its ore, as in vanilla.
+	 * player wasn't sneaking: then the one coal drops at its ore, as in vanilla.
 	 */
-	private static int quarry(ClientGameTestContext context, TestSingleplayerContext singleplayer, boolean key, ItemStack tool) {
+	private static int quarry(ClientGameTestContext context, TestSingleplayerContext singleplayer, boolean sneaking, ItemStack tool) {
 		singleplayer.getServer().runCommand("kill @e[type=item]");
 		singleplayer.getServer().runCommand("clear @p");
+		singleplayer.getServer().runCommand(QUARRY_SPOT);
 		singleplayer.getServer().runOnServer(_ -> {
 			ServerLevel level = player(singleplayer).level();
 
@@ -1123,16 +1118,18 @@ public class ImSoTalentedClientGameTest implements FabricClientGameTest {
 		holdInMainHand(context, singleplayer, tool);
 		double before = earnedXp(singleplayer, TalentTree.GATHERER);
 
-		if (key) {
-			context.getInput().holdKey(QuarryClient.QUARRY_KEY);
-			singleplayer.getServer().waitFor(_ -> Boolean.TRUE.equals(player(singleplayer).getAttached(Quarrying.KEY_HELD)), 20);
+		if (sneaking) {
+			context.getInput().holdKey(options -> options.keyShift);
+			singleplayer.getServer().waitFor(_ -> player(singleplayer).isShiftKeyDown(), 20);
+			// The crouch lowers the eyes; the aim below is taken from where they end up.
+			context.waitTicks(5);
 		}
 
 		mine(context, singleplayer, VEIN_START);
 
-		if (key) {
-			context.getInput().releaseKey(QuarryClient.QUARRY_KEY);
-			singleplayer.getServer().waitFor(_ -> player(singleplayer).getAttached(Quarrying.KEY_HELD) == null, 20);
+		if (sneaking) {
+			context.getInput().releaseKey(options -> options.keyShift);
+			singleplayer.getServer().waitFor(_ -> !player(singleplayer).isShiftKeyDown(), 20);
 		}
 
 		// Long enough for the coal in front of the player to be picked up.
@@ -1152,12 +1149,12 @@ public class ImSoTalentedClientGameTest implements FabricClientGameTest {
 					"Gatherer XP for " + broken + " ores broken");
 
 			List<ItemEntity> coal = level.getEntitiesOfClass(ItemEntity.class, new AABB(VEIN_START).inflate(6.0), item -> item.getItem().is(Items.COAL));
-			int atTheOres = (int) coal.stream().filter(item -> item.getZ() > VEIN_START.getZ()).count();
+			int atTheOres = (int) coal.stream().filter(item -> item.getZ() > QUARRY_DROP_LINE).count();
 			int total = player.getInventory().countItem(Items.COAL) + coal.stream().mapToInt(item -> item.getItem().getCount()).sum();
 			check(total == broken, "Every ore broken should drop exactly 1 coal without Fortune: " + broken + " broken, " + total + " coal");
-			check(atTheOres == (key ? 0 : 1), key
+			check(atTheOres == (sneaking ? 0 : 1), sneaking
 					? "Every quarry drop should land in front of the player, found " + atTheOres + " at the ores"
-					: "Without the key the coal should drop at its ore, found " + atTheOres + " there");
+					: "Without sneaking the coal should drop at its ore, found " + atTheOres + " there");
 			return broken;
 		});
 	}

@@ -17,7 +17,6 @@ public class ImSoTalentedClient implements ClientModInitializer {
 
 		TalentClient.init();
 		BackpackClient.init();
-		QuarryClient.init();
 		TreeXpHud.init();
 	}
 }

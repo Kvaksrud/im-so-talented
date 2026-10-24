@@ -40,7 +40,7 @@ Each tree's XP talent (Gatherer XP, Warrior XP, Guardian XP, Explorer XP) adds 1
 | | Bountiful Harvest | 3 | +3 copies of the crop's main item per harvest (mature wheat 1 → 4) |
 | | Backpack | 4 | 36 backpack slots, one row of 9 per level |
 | | Fast Growth | 3 | Crops within 16 blocks grow 2.5x faster |
-| | Quarrying | 5 | Hold Q while you break an ore to mine the whole connected vein with it (a 3×3×3 cube at level 1, one block wider per level, the whole vein at level 5) |
+| | Quarrying | 5 | Sneak while you break an ore to mine the whole connected vein with it (a 3×3×3 cube at level 1, one block wider per level, the whole vein at level 5) |
 | | More Luck | 3 | Fortune, Looting and Luck of the Sea III |
 | Warrior | Stronger Weapons | 5 | +20% damage with every attack |
 | | Warrior XP | 3 | +30% Warrior XP |
@@ -74,12 +74,12 @@ Talents marked "not in the game yet" can be bought but don't do anything yet.
 **Farming.** Bountiful Harvest adds one copy of the crop's main item per level to your harvests of the classic seven: wheat, carrots, potatoes, beetroots, nether wart, sweet berry bushes and cocoa. Only the main item's count grows: seeds and side drops are untouched, and a stage that hasn't produced its main item (young wheat drops only seeds) gets no bonus. Explosions, animals and players without the talent get nothing. Fast Growth makes those same crops grow faster: the per-tick growth roll is multiplied by 1.0 + 0.5 per level, using the highest Fast Growth level among players within 16 blocks horizontally of the crop (any height). With no player in reach the crops grow exactly as in vanilla.
 
 ## Quarrying
-- Hold **Q** (the **Quarry** key in Controls) while you break an ore, and the ore of the same kind touching it breaks too, corners included. Iron ore and deepslate iron ore count as one kind. Stone around the vein stays.
+- **Sneak** (hold **Shift**) while you break an ore, and the ore of the same kind touching it breaks too, corners included. Iron ore and deepslate iron ore count as one kind. Stone around the vein stays.
 - How far it reaches: a 3×3×3 cube around the ore at level 1, 4×4×4 at level 2, then 5×5×5 and 6×6×6, and the whole vein at level 5. An even-sized cube puts its extra layer on the far side from you. One break takes at most 256 blocks.
 - Every block counts as if you mined it yourself: the same drops (Fortune and More Luck too), 5 Gatherer XP per ore, and 1 durability per block (Unbreaking and Careful Hands still save some).
 - It only starts with a tool that gets the ore's drops, and it stops with 1 durability left, so a pickaxe never breaks from quarrying. It also stops if you switch items.
 - Everything the vein drops, items and XP, lands in front of you.
-- Q is also vanilla's Drop key. While you own Quarrying and hold a pickaxe, Q quarries instead of throwing the pickaxe away; with anything else in hand it drops as usual. Bind Quarry or Drop to another key in Controls to keep them apart.
+- Without sneaking you mine one block as usual.
 
 ## Backpack
 - Press **Shift** and your inventory key (**Shift + E** by default), or the bundle button above your inventory, to open it. It also opens from inside your inventory. Locked slots show a padlock.
@@ -148,7 +148,7 @@ Install it on the server and on every player's client.
 - `talent/`: the talent list and the four trees, what each level does (`TalentValues`), saved player data with tree XP (`TalentData`), tree level prices and enchantment stacking (`TalentRules`), buying and earning (`Talents`) and attribute talents (`TalentAttributes`).
 - `effect/` and `mixin/`: talents that change game code, like mining speed, quarrying, loot, weapon damage, block chance and shields, and the hooks that earn tree XP.
 - `inventory/`: the backpack, its menu, pickup overflow and death drops.
-- `client/`: the tabbed talent screen, the HUD bar, the backpack screen, keys (the Quarry key among them) and inventory buttons.
+- `client/`: the tabbed talent screen, the HUD bar, the backpack screen, keys and inventory buttons.
 
 ## Plans
 - Give Lifesteal, Second Wind, Fire Resistance, Water Breathing, Night Vision, Gliding and Flight Speed their effects.
