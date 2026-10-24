@@ -81,10 +81,11 @@ import net.fabricmc.loader.api.FabricLoader;
  * Plays the mod in a real client, in survival. First as a new player: the settings file; the tabbed talent screen (N
  * opens and closes it, the tabs switch trees); buying with talent points (none without tree XP, one per tree level
  * from {@code /talents xp}, a locked talent, Lifesteal at Stronger Weapons 5) and the level-up chat line; tree XP
- * earned through real play in each tree (mining an ore, but not stone, a log or a Silk Touch ore, and harvesting wheat
- * on the client for Gatherer, a sword hit on a husk for Warrior, a husk hitting the player for Guardian, walking with
- * the forward key and entering new chunks for Explorer, each with a control that earns nothing); the HUD bar (a flash
- * after earning, the pin button). Then with every talent at its top level: the attribute talents; toggling (command
+ * earned through real play in each tree (mining an ore, stone and a Silk Touch ore, but not a log or sand, and
+ * harvesting wheat on the client for Gatherer, a sword hit on a husk for Warrior, a husk hitting the player for
+ * Guardian, walking with the forward key and entering new chunks for Explorer, each with a control that earns
+ * nothing); the HUD bar (a flash after earning, the pin button). Then with every talent at its top level: the
+ * attribute talents; toggling (command
  * and right-click); the three farming talents; Step Assist (attribute and a real walk up a block), Reach and Swim
  * Speed; mining speed under both stacking rules; Quarrying (sneaking while mining an ore); More Luck; weapon
  * damage; Block Chance; the backpack (pickup overflow, Shift + inventory key in game and from the inventory,
@@ -278,36 +279,42 @@ public class ImSoTalentedClientGameTest implements FabricClientGameTest {
 	}
 
 	/**
-	 * Gatherer XP from mining and farming on the client. Of the blocks, only ores pay: stone mined with a pickaxe, a log
-	 * chopped with an axe and an ore mined with Silk Touch earn nothing, and an ore mined with a plain pickaxe earns 5.
-	 * A fully grown wheat harvested earns 1, young wheat nothing. With nothing pinned, the HUD shows the Gatherer bar
-	 * only for a moment after earning.
+	 * Gatherer XP from mining and farming on the client. A log chopped with an axe and sand dug with a shovel earn
+	 * nothing; stone mined with a pickaxe and an ore mined with Silk Touch earn a tenth of an ore each; an ore mined
+	 * with a plain pickaxe earns 5. A fully grown wheat harvested earns 1, young wheat nothing. With nothing pinned, the
+	 * HUD shows the Gatherer bar only for a moment after earning a whole point.
 	 */
 	private static void gathererXp(ClientGameTestContext context, TestSingleplayerContext singleplayer) {
 		context.waitFor(_ -> TreeXpHud.shownTree() == null, TreeXpHud.FLASH_TICKS + 40);
 		BlockPos block = new BlockPos(0, -59, 2);
 		double start = earnedXp(singleplayer, TalentTree.GATHERER);
 
-		holdInMainHand(context, singleplayer, new ItemStack(Items.DIAMOND_PICKAXE));
-		setBlock(singleplayer, block, Blocks.STONE.defaultBlockState());
-		mine(context, singleplayer, block);
-		checkNear(start, earnedXp(singleplayer, TalentTree.GATHERER), "stone mined with a pickaxe earns nothing");
-
 		holdInMainHand(context, singleplayer, new ItemStack(Items.DIAMOND_AXE));
 		setBlock(singleplayer, block, Blocks.OAK_LOG.defaultBlockState());
 		mine(context, singleplayer, block);
 		checkNear(start, earnedXp(singleplayer, TalentTree.GATHERER), "a log chopped with an axe earns nothing");
 
+		holdInMainHand(context, singleplayer, new ItemStack(Items.DIAMOND_SHOVEL));
+		setBlock(singleplayer, block, Blocks.SAND.defaultBlockState());
+		mine(context, singleplayer, block);
+		checkNear(start, earnedXp(singleplayer, TalentTree.GATHERER), "sand dug with a shovel earns nothing");
+
+		holdInMainHand(context, singleplayer, new ItemStack(Items.DIAMOND_PICKAXE));
+		setBlock(singleplayer, block, Blocks.STONE.defaultBlockState());
+		mine(context, singleplayer, block);
+		checkNear(start + TalentValues.GATHERER_XP_PER_BLOCK, earnedXp(singleplayer, TalentTree.GATHERER), "stone mined with a pickaxe earns a tenth of an ore");
+		check(context.computeOnClient(_ -> TreeXpHud.shownTree()) == null, "Half a point isn't a whole one yet, so the HUD bar should stay hidden");
+
 		holdInMainHand(context, singleplayer, enchanted(singleplayer, new ItemStack(Items.DIAMOND_PICKAXE), Enchantments.SILK_TOUCH, 1));
 		setBlock(singleplayer, block, Blocks.COAL_ORE.defaultBlockState());
 		mine(context, singleplayer, block);
-		checkNear(start, earnedXp(singleplayer, TalentTree.GATHERER), "an ore mined with Silk Touch earns nothing");
-		check(context.computeOnClient(_ -> TreeXpHud.shownTree()) == null, "Nothing earned, so the HUD bar should stay hidden");
+		checkNear(start + 2 * TalentValues.GATHERER_XP_PER_BLOCK, earnedXp(singleplayer, TalentTree.GATHERER), "an ore mined with Silk Touch earns what stone does");
 
 		holdInMainHand(context, singleplayer, new ItemStack(Items.DIAMOND_PICKAXE));
 		setBlock(singleplayer, block, Blocks.COAL_ORE.defaultBlockState());
 		mine(context, singleplayer, block);
-		checkNear(start + TalentValues.GATHERER_XP_PER_ORE, earnedXp(singleplayer, TalentTree.GATHERER), "an ore mined with a pickaxe");
+		checkNear(start + 2 * TalentValues.GATHERER_XP_PER_BLOCK + TalentValues.GATHERER_XP_PER_ORE, earnedXp(singleplayer, TalentTree.GATHERER),
+				"an ore mined with a pickaxe");
 
 		context.waitFor(_ -> TreeXpHud.shownTree() == TalentTree.GATHERER, 20);
 		context.waitFor(_ -> TreeXpHud.shownTree() == null, TreeXpHud.FLASH_TICKS + 20);

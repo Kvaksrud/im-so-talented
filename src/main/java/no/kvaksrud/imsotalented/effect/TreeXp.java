@@ -8,6 +8,7 @@ import org.jspecify.annotations.Nullable;
 
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageTypes;
@@ -39,8 +40,9 @@ import net.fabricmc.fabric.api.tag.convention.v2.ConventionalBlockTags;
  * {@link Talents#earn} (which skips creative and spectator players, adds the tree's XP talent and carries fractions
  * over). The amounts are in {@link TalentValues}.
  * <ul>
- * <li>Gatherer: ores (the {@code c:ores} tag) broken with the right tool and without Silk Touch, fully grown crops
- *     harvested, and catches reeled in. No other block pays.</li>
+ * <li>Gatherer: ores (the {@code c:ores} tag) broken with the right tool and without Silk Touch, other blocks a pickaxe
+ *     mines (a tenth of an ore), fully grown crops harvested, and catches reeled in. Blocks for other tools pay
+ *     nothing.</li>
  * <li>Warrior: damage a player's attacks deal to hostile mobs, up to the health the mob had left.</li>
  * <li>Guardian: damage hostile mobs aim at a player, counted before armor, shield and Block Chance, unless the hit
  *     kills them.</li>
@@ -122,12 +124,23 @@ public final class TreeXp {
 	// Gatherer
 
 	/**
-	 * Gatherer XP for one broken block: only ores pay, and only when the ore drops what it's mined for. So nothing
-	 * without the right tool (a pickaxe below the ore's tier gets no drops), and nothing with Silk Touch (the ore drops
-	 * itself and could be placed and mined again). Stone, logs and every other block pay nothing.
+	 * Gatherer XP for one broken block, mined with a tool that gets its drops: an ore pays the ore's share, and any
+	 * other block a pickaxe mines pays a tenth of that. An ore mined with Silk Touch counts as a plain pickaxe block,
+	 * since it drops itself and could be placed and mined again. Nothing pays without the right tool (a bare hand, or a
+	 * pickaxe below the block's tier), and blocks for other tools (sand, dirt, logs) never pay.
+	 *
+	 * @param pickaxeBlock whether a pickaxe is the tool for the block ({@code minecraft:mineable/pickaxe})
 	 */
-	public static double blockXp(boolean ore, boolean correctTool, boolean silkTouch) {
-		return ore && correctTool && !silkTouch ? TalentValues.GATHERER_XP_PER_ORE : 0.0;
+	public static double blockXp(boolean ore, boolean pickaxeBlock, boolean correctTool, boolean silkTouch) {
+		if (!correctTool) {
+			return 0.0;
+		}
+
+		if (ore && !silkTouch) {
+			return TalentValues.GATHERER_XP_PER_ORE;
+		}
+
+		return pickaxeBlock ? TalentValues.GATHERER_XP_PER_BLOCK : 0.0;
 	}
 
 	/**
@@ -154,7 +167,7 @@ public final class TreeXp {
 				.map(silk -> EnchantmentHelper.getItemEnchantmentLevel(silk, tool) > 0)
 				.orElse(false);
 
-		Talents.earn(player, TalentTree.GATHERER, blockXp(ore, tool.isCorrectToolForDrops(state), silkTouch));
+		Talents.earn(player, TalentTree.GATHERER, blockXp(ore, state.is(BlockTags.MINEABLE_WITH_PICKAXE), tool.isCorrectToolForDrops(state), silkTouch));
 	}
 
 	/**

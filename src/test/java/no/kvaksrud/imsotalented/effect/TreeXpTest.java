@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import no.kvaksrud.imsotalented.talent.TalentValues;
 import org.junit.jupiter.api.Test;
 
 import net.minecraft.world.entity.player.Input;
@@ -14,23 +15,29 @@ class TreeXpTest {
 
 	@Test
 	void oresPayFivePoints() {
-		assertEquals(5.0, TreeXp.blockXp(true, true, false), 1e-9, "an ore with the right pickaxe");
+		assertEquals(5.0, TreeXp.blockXp(true, true, true, false), 1e-9, "an ore with the right pickaxe");
 	}
 
 	@Test
-	void otherBlocksPayNothing() {
-		assertEquals(0.0, TreeXp.blockXp(false, true, false), 1e-9, "stone with a pickaxe, a log with an axe, dirt with a shovel");
-		assertEquals(0.0, TreeXp.blockXp(false, false, false), 1e-9, "stone with a fist");
+	void otherPickaxeBlocksPayATenthOfAnOre() {
+		assertEquals(0.5, TreeXp.blockXp(false, true, true, false), 1e-9, "stone, deepslate or netherrack with a pickaxe");
+		assertEquals(TalentValues.GATHERER_XP_PER_ORE / 10.0, TalentValues.GATHERER_XP_PER_BLOCK, 1e-9);
 	}
 
 	@Test
-	void silkTouchOresPayNothing() {
-		assertEquals(0.0, TreeXp.blockXp(true, true, true), 1e-9, "Silk Touch keeps the ore to place and mine again");
+	void blocksForOtherToolsPayNothing() {
+		assertEquals(0.0, TreeXp.blockXp(false, false, true, false), 1e-9, "sand or dirt with a shovel, a log with an axe");
+	}
+
+	@Test
+	void silkTouchOresPayLikeStone() {
+		assertEquals(0.5, TreeXp.blockXp(true, true, true, true), 1e-9, "Silk Touch keeps the ore to place and mine again");
 	}
 
 	@Test
 	void theWrongToolPaysNothing() {
-		assertEquals(0.0, TreeXp.blockXp(true, false, false), 1e-9, "diamond ore with a stone pickaxe");
+		assertEquals(0.0, TreeXp.blockXp(true, true, false, false), 1e-9, "diamond ore with a stone pickaxe");
+		assertEquals(0.0, TreeXp.blockXp(false, true, false, false), 1e-9, "stone with a fist");
 	}
 
 	@Test

@@ -18,7 +18,7 @@ A Fabric mod for Minecraft 26.3 with four talent trees. Each tree has its own XP
 
 | Tree | Earns from | XP | Doesn't count |
 |---|---|---|---|
-| Gatherer | Mining ores with the right tool, harvesting fully grown crops, catching fish | 5 per ore, 1 per crop, 5 per catch | Every other block (stone, logs, dirt), ores mined with Silk Touch, the wrong tool or a bare hand |
+| Gatherer | Mining with a pickaxe (ores pay the most), harvesting fully grown crops, catching fish | 5 per ore, 0.5 per other pickaxe block (stone, deepslate, netherrack, an ore with Silk Touch), 1 per crop, 5 per catch | Blocks for other tools (sand, dirt, gravel, logs), the wrong tool or a bare hand |
 | Warrior | Damage you deal to hostile mobs, melee or ranged | 1 per point of damage | Overkill past the mob's remaining health, players, passive mobs, thorns and fire |
 | Guardian | Damage hostile mobs aim at you, counted before armor, shield and Block Chance, as long as you survive the hit | 2 per point of damage | Falls, fire, drowning and other damage that isn't from a mob, the hit that kills you |
 | Explorer | Moving under your own power while holding a movement key (walking, sprinting, wading, swimming; elytra gliding at half rate), and every chunk you enter for the first time, however you get there | 1 per 25 blocks, 1 per new chunk | Riding, boats, minecarts, floating in water, being pushed or knocked back |

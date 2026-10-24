@@ -53,8 +53,13 @@ public final class TalentValues {
 	/** Gliding and flight speed are multiplied by 1 + this, per level of Flight Speed. */
 	public static final double FLIGHT_SPEED_MULTIPLIER_PER_LEVEL = 0.05;
 
-	/** Gatherer XP per ore broken with the right tool and without Silk Touch: the only blocks that pay. */
+	/** Gatherer XP per ore broken with the right tool and without Silk Touch. */
 	public static final double GATHERER_XP_PER_ORE = 5.0;
+	/**
+	 * Gatherer XP per other block a pickaxe is the right tool for (stone, deepslate, netherrack, an ore with Silk Touch):
+	 * a tenth of an ore. Blocks for other tools, like sand, dirt and logs, pay nothing.
+	 */
+	public static final double GATHERER_XP_PER_BLOCK = GATHERER_XP_PER_ORE / 10.0;
 	/** Gatherer XP per mature crop harvested (the seven Bountiful Harvest crops). */
 	public static final double GATHERER_XP_PER_CROP = 1.0;
 	/** Gatherer XP per fish (or other catch) reeled in. */
