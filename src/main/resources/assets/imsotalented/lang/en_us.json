@@ -115,7 +115,7 @@
 	"talent.imsotalented.flight_speed.effect": "Gliding speed +%s%%",
 
 	"key.category.imsotalented.main": "I'm So Talented",
-	"key.imsotalented.open_talents": "Open Talents",
+	"key.imsotalented.talent_tree": "Open Talents",
 	"key.imsotalented.open_backpack": "Open Backpack",
 	"container.imsotalented.backpack": "Backpack",
 	"container.imsotalented.backpack.unlocked": "%s/%s",

@@ -19,7 +19,7 @@ import net.minecraft.world.entity.player.Player;
  */
 public final class Talents {
 	/** The keybind named in the level-up message: the client resolves it to the key the player bound. */
-	private static final String TALENT_TREE_KEY = "key.imsotalented.open_talents";
+	private static final String TALENT_TREE_KEY = "key.imsotalented.talent_tree";
 
 	private Talents() {
 	}

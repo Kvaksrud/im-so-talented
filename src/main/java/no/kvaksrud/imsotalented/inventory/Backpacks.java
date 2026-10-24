@@ -47,7 +47,7 @@ public final class Backpacks {
 	public static final Component TITLE = Component.translatable("container.imsotalented.backpack");
 
 	/** The talent tree's key mapping (registered by the client), named in the "locked" message. */
-	private static final String TALENT_TREE_KEY = "key.imsotalented.open_talents";
+	private static final String TALENT_TREE_KEY = "key.imsotalented.talent_tree";
 
 	private Backpacks() {
 	}

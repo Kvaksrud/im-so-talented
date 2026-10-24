@@ -16,8 +16,12 @@ public final class TalentClient {
 	/** The mod's own section in the controls screen; the backpack's key goes here too. */
 	public static final KeyMapping.Category KEY_CATEGORY = KeyMapping.Category.register(ImSoTalented.id("main"));
 
-	/** Not a GLFW code: 26.3 uses SDL scancodes, and N is free in vanilla. Also closes the tree. */
-	public static final KeyMapping OPEN_TALENTS = new KeyMapping("key.imsotalented.open_talents", InputConstants.KEY_N, KEY_CATEGORY);
+	/**
+	 * Not a GLFW code: 26.3 uses SDL scancodes. Also closes the tree. The id is new with the four trees: under the old
+	 * {@code key.imsotalented.open_talents} every player's options.txt already holds K, which would win over the new
+	 * default. Vanilla's spectator toggle is F3 + N; it only acts with F3 held, and so this key skips those presses.
+	 */
+	public static final KeyMapping OPEN_TALENTS = new KeyMapping("key.imsotalented.talent_tree", InputConstants.KEY_N, KEY_CATEGORY);
 
 	/** The rightmost inventory button; the backpack's sits to its left. */
 	private static final int INVENTORY_BUTTON_ORDER = 0;
@@ -30,13 +34,13 @@ public final class TalentClient {
 
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			while (OPEN_TALENTS.consumeClick()) {
-				if (client.player != null && client.gui.screen() == null) {
+				if (client.player != null && client.gui.screen() == null && !client.options.keyDebugModifier.isDown()) {
 					client.gui.setScreen(new TalentScreen(null));
 				}
 			}
 		});
 
-		InventoryButtons.register(INVENTORY_BUTTON_ORDER, Items.EXPERIENCE_BOTTLE, Component.translatable("key.imsotalented.open_talents"), () -> {
+		InventoryButtons.register(INVENTORY_BUTTON_ORDER, Items.EXPERIENCE_BOTTLE, Component.translatable(OPEN_TALENTS.getName()), () -> {
 			Minecraft minecraft = Minecraft.getInstance();
 			// Esc goes back to the inventory, which also keeps anything held on the cursor in its menu.
 			minecraft.gui.setScreen(new TalentScreen(minecraft.gui.screen()));
