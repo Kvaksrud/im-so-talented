@@ -85,12 +85,11 @@ import net.fabricmc.loader.api.FabricLoader;
  * harvesting wheat on the client for Gatherer, a sword hit on a husk for Warrior, a husk hitting the player for
  * Guardian, walking with the forward key and entering new chunks for Explorer, each with a control that earns
  * nothing); the HUD bar (a flash after earning, the pin button). Then with every talent at its top level: the
- * attribute talents; toggling (command
- * and right-click); the three farming talents; Step Assist (attribute and a real walk up a block), Reach and Swim
- * Speed; mining speed under both stacking rules; Quarrying (sneaking while mining an ore); More Luck; weapon
- * damage; Block Chance; the backpack (pickup overflow, Shift + inventory key in game and from the inventory,
- * shrinking, and the plain inventory without the talent); the inventory buttons; death and respawn; and a save and
- * reload. Screenshots land in build/run/clientGameTest/screenshots (prefixed ist_).
+ * attribute talents; toggling (command and right-click); the three farming talents; Step Assist (attribute and a real
+ * walk up a block), Reach and Swim Speed; mining speed under both stacking rules; Quarrying (sneaking while mining an
+ * ore); More Luck; weapon damage; Block Chance; the backpack (pickup overflow, Shift + inventory key in game and from
+ * the inventory, shrinking, and the plain inventory without the talent); the inventory buttons; death and respawn; and
+ * a save and reload. Screenshots land in build/run/clientGameTest/screenshots (prefixed ist_).
  */
 @SuppressWarnings("UnstableApiUsage")
 public class ImSoTalentedClientGameTest implements FabricClientGameTest {
