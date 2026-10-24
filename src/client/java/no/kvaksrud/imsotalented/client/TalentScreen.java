@@ -89,10 +89,10 @@ public class TalentScreen extends Screen {
 	private static final int VANILLA_INSIDE_WIDTH = 234;
 	private static final int VANILLA_INSIDE_HEIGHT = 113;
 
-	private static final Identifier TAB_FIRST = Identifier.withDefaultNamespace("advancements/tab_above_left");
-	private static final Identifier TAB_FIRST_SELECTED = Identifier.withDefaultNamespace("advancements/tab_above_left_selected");
-	private static final Identifier TAB = Identifier.withDefaultNamespace("advancements/tab_above_middle");
-	private static final Identifier TAB_SELECTED = Identifier.withDefaultNamespace("advancements/tab_above_middle_selected");
+	private static final Identifier TAB_FIRST = Identifier.withDefaultNamespace("advancements/tab_left_top");
+	private static final Identifier TAB_FIRST_SELECTED = Identifier.withDefaultNamespace("advancements/tab_left_top_selected");
+	private static final Identifier TAB = Identifier.withDefaultNamespace("advancements/tab_left_middle");
+	private static final Identifier TAB_SELECTED = Identifier.withDefaultNamespace("advancements/tab_left_middle_selected");
 
 	private static final Identifier TASK_FRAME = Identifier.withDefaultNamespace("advancements/task_frame_unobtained");
 	private static final Identifier TASK_FRAME_BOUGHT = Identifier.withDefaultNamespace("advancements/task_frame_obtained");
@@ -511,8 +511,8 @@ public class TalentScreen extends Screen {
 	}
 
 	/**
-	 * The vanilla top-row tabs, over the window's border: the first tab's sprite lines up with the window's left edge,
-	 * and the selected one opens into the header. Each shows its tree's root icon.
+	 * The vanilla left-side tabs, over the window's border: the first tab's sprite lines up with the window's top edge,
+	 * and the selected one opens into the window. Each shows its tree's root icon.
 	 */
 	private void extractTabs(GuiGraphicsExtractor graphics) {
 		for (TalentTree tab : TalentTree.values()) {

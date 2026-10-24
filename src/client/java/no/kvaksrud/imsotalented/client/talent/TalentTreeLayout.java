@@ -17,8 +17,8 @@ import org.jspecify.annotations.Nullable;
  * talent shows up in its tree at its {@link Talent#row()} and {@link Talent#column()} without touching the screen. Pure
  * geometry, no rendering, so a client game test can ask where a node or a tab is and which node is under a point.
  *
- * <p>The screen is the vanilla advancements window: a row of tabs along the top, one per {@link TalentTree}, and a
- * window under them with a light header (the active tree's name, level, XP bar and pin button) over a dark area that
+ * <p>The screen is the vanilla advancements window: a column of tabs down its left side, one per {@link TalentTree},
+ * and the window beside them with a light header (the active tree's name, level, XP bar and pin button) over a dark area that
  * holds the active tree. Every tree is laid out in the same window, so all talents have a position at once; only the
  * active tab's are drawn and clickable.
  *
@@ -26,9 +26,9 @@ import org.jspecify.annotations.Nullable;
  * never moves the window. A tree is centered on its columns: the middle of its leftmost and rightmost column sits in
  * the middle of the window, so the roots land in the middle, and half columns (1.5) fall between two others. Rows
  * start at the top, so a tab's root is always in the same place. Rows are a node plus a gap for the connector lines;
- * the gap shrinks from {@link #MAX_ROW_GAP} to {@link #MIN_ROW_GAP} when the screen is short, so the whole screen,
- * tabs included, fits 480x270 (GUI scale 4 on a 1080p window) and the nodes still fit at 240 tall (the smallest
- * automatic GUI scale), where only the window's bottom border may run off the screen.
+ * the gap shrinks from {@link #MAX_ROW_GAP} towards {@link #MIN_ROW_GAP} when the screen is short. The tabs sit on the
+ * left rather than on top because height is what runs out: the automatic GUI scale leaves a 854x480 window (the game's
+ * default) 427x240, and with the tabs beside it the whole window fits that with a 7 px row gap.
  *
  * <p>Each prereq gets its own connector, an elbow: down from the parent, across in the gap right above the child,
  * and down into the child. A prereq two rows up runs straight down past the row between, through the gap between two
@@ -86,16 +86,14 @@ public final class TalentTreeLayout {
 	public static final int PIN_SIZE = 13;
 	public static final int PIN_Y = XP_ROW_CENTER_Y - PIN_SIZE / 2;
 
-	/** The vanilla tab sprites ({@code advancements/tab_above_*}) are this size. */
-	public static final int TAB_WIDTH = 28;
-	public static final int TAB_HEIGHT = 32;
-	/** Between two tabs, as in the advancements screen. */
-	public static final int TAB_SPACING = 4;
-	/** A tab's bottom rows lie over the window's top border, so the selected one opens into the window. */
+	/** The vanilla left-side tab sprites ({@code advancements/tab_left_*}) are this size, stacked with no gap. */
+	public static final int TAB_WIDTH = 32;
+	public static final int TAB_HEIGHT = 28;
+	/** A tab's right columns lie over the window's left border, so the selected one opens into the window. */
 	public static final int TAB_OVERLAP = 4;
 	/** Where the tab's icon goes inside it, as in the advancements screen. */
-	public static final int TAB_ICON_X = 6;
-	public static final int TAB_ICON_Y = 9;
+	public static final int TAB_ICON_X = 10;
+	public static final int TAB_ICON_Y = 5;
 
 	private final int left;
 	private final int top;
@@ -106,16 +104,16 @@ public final class TalentTreeLayout {
 	private final Map<TalentTree, List<Connector>> connectors = new EnumMap<>(TalentTree.class);
 
 	private TalentTreeLayout(int screenWidth, int screenHeight) {
-		int tabsAbove = TAB_HEIGHT - TAB_OVERLAP;
+		int tabsLeft = TAB_WIDTH - TAB_OVERLAP;
 		int fixedHeight = TREE_TOP + ROWS * NODE_FOOTPRINT + TREE_PADDING + BORDER;
-		int spare = (screenHeight - tabsAbove - fixedHeight) / Math.max(1, ROWS - 1);
+		int spare = (screenHeight - fixedHeight) / Math.max(1, ROWS - 1);
 		this.rowGap = Math.clamp(spare, MIN_ROW_GAP, MAX_ROW_GAP);
 
 		this.width = 2 * BORDER + 2 * TREE_PADDING + COLUMNS * COLUMN_PITCH - COLUMN_GAP;
 		this.height = fixedHeight + (ROWS - 1) * this.rowGap;
 		// Centered with the tabs; if the screen is too small, keep the tabs and header on screen rather than the bottom.
-		this.left = Math.max(0, (screenWidth - this.width) / 2);
-		this.top = Math.max(0, (screenHeight - tabsAbove - this.height) / 2) + tabsAbove;
+		this.left = Math.max(0, (screenWidth - tabsLeft - this.width) / 2) + tabsLeft;
+		this.top = Math.max(0, (screenHeight - this.height) / 2);
 
 		for (TalentTree tree : TalentTree.values()) {
 			this.placeTree(tree);
@@ -259,11 +257,11 @@ public final class TalentTreeLayout {
 	}
 
 	/**
-	 * Top left corner of the tree's tab sprite: left to right in {@link TalentTree} order from the window's left edge,
-	 * standing on the window's top border, as the advancements screen places its top row of tabs.
+	 * Top left corner of the tree's tab sprite: top to bottom in {@link TalentTree} order from the window's top edge,
+	 * against the window's left border, as the advancements screen places its left-side tabs.
 	 */
 	public Vector2i tabPosition(TalentTree tree) {
-		return new Vector2i(this.left + tree.ordinal() * (TAB_WIDTH + TAB_SPACING), this.top - TAB_HEIGHT + TAB_OVERLAP);
+		return new Vector2i(this.left - TAB_WIDTH + TAB_OVERLAP, this.top + tree.ordinal() * TAB_HEIGHT);
 	}
 
 	/** Middle of the tree's tab icon, which is inside the tab whether it's selected or not. */
