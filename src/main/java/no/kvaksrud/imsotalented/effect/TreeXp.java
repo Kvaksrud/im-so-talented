@@ -6,10 +6,8 @@ import no.kvaksrud.imsotalented.talent.TalentValues;
 import no.kvaksrud.imsotalented.talent.Talents;
 import org.jspecify.annotations.Nullable;
 
-import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageTypes;
@@ -41,8 +39,8 @@ import net.fabricmc.fabric.api.tag.convention.v2.ConventionalBlockTags;
  * {@link Talents#earn} (which skips creative and spectator players, adds the tree's XP talent and carries fractions
  * over). The amounts are in {@link TalentValues}.
  * <ul>
- * <li>Gatherer: stone-hard blocks and logs broken with the right tool, ores (the {@code c:ores} tag) with the right
- *     tool, fully grown crops harvested, and catches reeled in.</li>
+ * <li>Gatherer: ores (the {@code c:ores} tag) broken with the right tool and without Silk Touch, fully grown crops
+ *     harvested, and catches reeled in. No other block pays.</li>
  * <li>Warrior: damage a player's attacks deal to hostile mobs, up to the health the mob had left.</li>
  * <li>Guardian: damage hostile mobs aim at a player, counted before armor, shield and Block Chance, unless the hit
  *     kills them.</li>
@@ -93,7 +91,7 @@ public final class TreeXp {
 		// still holds what broke it.
 		PlayerBlockBreakEvents.AFTER.register((level, player, pos, state, blockEntity) -> {
 			if (player instanceof ServerPlayer serverPlayer) {
-				onBlockBroken(serverPlayer, level, pos, state);
+				onBlockBroken(serverPlayer, state);
 			}
 		});
 
@@ -124,23 +122,12 @@ public final class TreeXp {
 	// Gatherer
 
 	/**
-	 * Gatherer XP for one broken block. Nothing without the right tool (the held item mines the block and gets its drops,
-	 * so a pickaxe below the block's tier, or a fist on a log, earns nothing). An ore pays the ore rate, unless the tool
-	 * has Silk Touch: then the ore drops itself and could be placed and mined again, so it pays like any other block.
-	 * Logs and blocks at least as hard as stone pay the block rate; softer blocks (dirt, torches, flowers) pay nothing.
-	 *
-	 * @param destroyTime the block's hardness (1.5 for stone, 0 for a torch, negative for bedrock)
+	 * Gatherer XP for one broken block: only ores pay, and only when the ore drops what it's mined for. So nothing
+	 * without the right tool (a pickaxe below the ore's tier gets no drops), and nothing with Silk Touch (the ore drops
+	 * itself and could be placed and mined again). Stone, logs and every other block pay nothing.
 	 */
-	public static double blockXp(float destroyTime, boolean log, boolean ore, boolean correctTool, boolean silkTouch) {
-		if (!correctTool) {
-			return 0.0;
-		}
-
-		if (ore && !silkTouch) {
-			return TalentValues.GATHERER_XP_PER_ORE;
-		}
-
-		return ore || log || destroyTime >= TalentValues.GATHERER_MIN_HARDNESS ? TalentValues.GATHERER_XP_PER_BLOCK : 0.0;
+	public static double blockXp(boolean ore, boolean correctTool, boolean silkTouch) {
+		return ore && correctTool && !silkTouch ? TalentValues.GATHERER_XP_PER_ORE : 0.0;
 	}
 
 	/**
@@ -159,7 +146,7 @@ public final class TreeXp {
 		return items > 0 ? TalentValues.GATHERER_XP_PER_FISH : 0.0;
 	}
 
-	private static void onBlockBroken(ServerPlayer player, Level level, BlockPos pos, BlockState state) {
+	private static void onBlockBroken(ServerPlayer player, BlockState state) {
 		ItemStack tool = player.getMainHandItem();
 		boolean ore = state.is(ConventionalBlockTags.ORES);
 		// The registry lookup only for ores, the one case it changes the answer.
@@ -167,8 +154,7 @@ public final class TreeXp {
 				.map(silk -> EnchantmentHelper.getItemEnchantmentLevel(silk, tool) > 0)
 				.orElse(false);
 
-		Talents.earn(player, TalentTree.GATHERER,
-				blockXp(state.getDestroySpeed(level, pos), state.is(BlockTags.LOGS), ore, tool.isCorrectToolForDrops(state), silkTouch));
+		Talents.earn(player, TalentTree.GATHERER, blockXp(ore, tool.isCorrectToolForDrops(state), silkTouch));
 	}
 
 	/**

@@ -24,6 +24,9 @@ import net.fabricmc.fabric.api.loot.v3.LootTableEvents;
  * <li>{@link SwimSpeed}: Swim Speed, the softened per-tick underwater damping in {@code travelInWater} (the
  *     {@code LivingEntityMixin} wrap reads the player's EFFECTIVE level — it is toggleable, and P8/P9 copy
  *     that read).</li>
+ * <li>{@link Quarrying}: Quarrying, the rest of an ore's vein broken with it while the Quarry key is held (a wrap of
+ *     {@code ServerPlayerGameMode.destroyBlock}, and {@code BlockMixin} moving the drops in front of the player). Its
+ *     key attachment and payload are set up in {@link #init()}.</li>
  * </ul>
  * Step Assist and Reach have no entry here: 26.3 reads step height and both interaction ranges off
  * attributes, so they are plain rows in
@@ -45,6 +48,7 @@ public final class TalentEffects {
 	/** Registers the event-based effects; the mixin-based ones apply themselves when their classes load. */
 	public static void init() {
 		TreeXp.init();
+		Quarrying.init();
 
 		// Bountiful Harvest: the fabric-loot-api drop event, server side (loot never runs on the client). For the
 		// seven farm harvest tables, the breaking player's level in the context's THIS_ENTITY adds that many extra

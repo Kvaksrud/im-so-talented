@@ -74,10 +74,11 @@ class TalentValuesTest {
 			assertTrue(lang.has(talent.translationKey()), "no name for " + talent.id());
 			assertTrue(lang.has(talent.descriptionKey()), "no description for " + talent.id());
 			assertTrue(lang.has(talent.effectKey()), "no effect text for " + talent.id());
-			int placeholders = placeholders(lang.get(talent.effectKey()).getAsString());
 
 			for (int level = 0; level <= talent.maxLevel(); level++) {
-				assertEquals(placeholders, TalentValues.effectArgs(talent, level).length, talent.id() + " at level " + level);
+				String key = TalentValues.effectKey(talent, level);
+				assertTrue(lang.has(key), "no effect text " + key);
+				assertEquals(placeholders(lang.get(key).getAsString()), TalentValues.effectArgs(talent, level).length, talent.id() + " at level " + level);
 			}
 		}
 

@@ -1,6 +1,6 @@
 # I'm So Talented
 
-A Fabric mod for Minecraft 26.3 with four talent trees. Each tree has its own XP, and you earn it by doing that tree's thing: mine and farm for Gatherer, fight for Warrior, take hits for Guardian, travel for Explorer. Talents make you mine faster, find more loot, hit harder, take less damage, carry more and move better.
+A Fabric mod for Minecraft 26.3 with four talent trees. Each tree has its own XP, and you earn it by doing that tree's thing: mine and farm for Gatherer, fight for Warrior, take hits for Guardian, travel for Explorer. Talents make you mine faster, quarry whole ore veins, find more loot, hit harder, take less damage, carry more and move better.
 
 ## How it works
 - Press **N** (or the XP-bottle button above your inventory) to open the talent tree. Each tree has its own tab.
@@ -18,14 +18,14 @@ A Fabric mod for Minecraft 26.3 with four talent trees. Each tree has its own XP
 
 | Tree | Earns from | XP | Doesn't count |
 |---|---|---|---|
-| Gatherer | Breaking stone-hard blocks and logs with the right tool, mining ores, harvesting fully grown crops, catching fish | 0.5 per block, 5 per ore (0.5 with Silk Touch), 1 per crop, 5 per catch | Blocks that break instantly (grass, flowers, torches), breaking with the wrong tool or a bare hand |
+| Gatherer | Mining ores with the right tool, harvesting fully grown crops, catching fish | 5 per ore, 1 per crop, 5 per catch | Every other block (stone, logs, dirt), ores mined with Silk Touch, the wrong tool or a bare hand |
 | Warrior | Damage you deal to hostile mobs, melee or ranged | 1 per point of damage | Overkill past the mob's remaining health, players, passive mobs, thorns and fire |
 | Guardian | Damage hostile mobs aim at you, counted before armor, shield and Block Chance, as long as you survive the hit | 2 per point of damage | Falls, fire, drowning and other damage that isn't from a mob, the hit that kills you |
 | Explorer | Moving under your own power while holding a movement key (walking, sprinting, wading, swimming; elytra gliding at half rate), and every chunk you enter for the first time, however you get there | 1 per 25 blocks, 1 per new chunk | Riding, boats, minecarts, floating in water, being pushed or knocked back |
 
 Each tree's XP talent (Gatherer XP, Warrior XP, Guardian XP, Explorer XP) adds 10% per level to that tree's XP. The numbers aim at roughly 1,500 XP for an hour of each activity.
 
-**Prices.** Going from level n to level n + 1 takes `ceil(25 × 1.18^n)` tree XP, the same in every tree: level 1 takes 25, level 10 takes 111 and level 20 takes 581. Maxing a tree takes 12,000 to 23,400 tree XP, roughly 8 to 16 hours of its activity. Both numbers are [settings](#settings).
+**Prices.** Going from level n to level n + 1 takes `ceil(25 × 1.18^n)` tree XP, the same in every tree: level 1 takes 25, level 10 takes 111 and level 20 takes 581. Maxing a tree takes 16,700 to 27,600 tree XP, roughly 11 to 18 hours of its activity (Gatherer has the most levels). Both numbers are [settings](#settings).
 
 **On the HUD.** One thin bar sits just above the vanilla XP bar, in the tree's color. Pin a tree with the pin button in its tab and its bar stays there. When you earn XP in another tree, that tree borrows the slot for 3 seconds. With nothing pinned the bar only shows for 3 seconds after you earn XP. The pin is a setting on your own computer.
 
@@ -40,6 +40,7 @@ Each tree's XP talent (Gatherer XP, Warrior XP, Guardian XP, Explorer XP) adds 1
 | | Bountiful Harvest | 3 | +3 copies of the crop's main item per harvest (mature wheat 1 → 4) |
 | | Backpack | 4 | 36 backpack slots, one row of 9 per level |
 | | Fast Growth | 3 | Crops within 16 blocks grow 2.5x faster |
+| | Quarrying | 5 | Hold Q while you break an ore to mine the whole connected vein with it (a 3×3×3 cube at level 1, one block wider per level, the whole vein at level 5) |
 | | More Luck | 3 | Fortune, Looting and Luck of the Sea III |
 | Warrior | Stronger Weapons | 5 | +20% damage with every attack |
 | | Warrior XP | 3 | +30% Warrior XP |
@@ -71,6 +72,14 @@ Talents marked "not in the game yet" can be bought but don't do anything yet.
 **Weapon damage.** Stronger Weapons and the matching specialist add up: a sword at the top of both does 50% more damage. They apply to real attacks only, meaning melee, sweeps, spear jabs and charges, mace smashes, arrows and tridents. Thorns, fire and explosions don't get the bonus.
 
 **Farming.** Bountiful Harvest adds one copy of the crop's main item per level to your harvests of the classic seven: wheat, carrots, potatoes, beetroots, nether wart, sweet berry bushes and cocoa. Only the main item's count grows: seeds and side drops are untouched, and a stage that hasn't produced its main item (young wheat drops only seeds) gets no bonus. Explosions, animals and players without the talent get nothing. Fast Growth makes those same crops grow faster: the per-tick growth roll is multiplied by 1.0 + 0.5 per level, using the highest Fast Growth level among players within 16 blocks horizontally of the crop (any height). With no player in reach the crops grow exactly as in vanilla.
+
+## Quarrying
+- Hold **Q** (the **Quarry** key in Controls) while you break an ore, and the ore of the same kind touching it breaks too, corners included. Iron ore and deepslate iron ore count as one kind. Stone around the vein stays.
+- How far it reaches: a 3×3×3 cube around the ore at level 1, 4×4×4 at level 2, then 5×5×5 and 6×6×6, and the whole vein at level 5. An even-sized cube puts its extra layer on the far side from you. One break takes at most 256 blocks.
+- Every block counts as if you mined it yourself: the same drops (Fortune and More Luck too), 5 Gatherer XP per ore, and 1 durability per block (Unbreaking and Careful Hands still save some).
+- It only starts with a tool that gets the ore's drops, and it stops with 1 durability left, so a pickaxe never breaks from quarrying. It also stops if you switch items.
+- Everything the vein drops, items and XP, lands in front of you.
+- Q is also vanilla's Drop key. While you own Quarrying and hold a pickaxe, Q quarries instead of throwing the pickaxe away; with anything else in hand it drops as usual. Bind Quarry or Drop to another key in Controls to keep them apart.
 
 ## Backpack
 - Press **Shift** and your inventory key (**Shift + E** by default), or the bundle button above your inventory, to open it. It also opens from inside your inventory. Locked slots show a padlock.
@@ -128,6 +137,7 @@ Install it on the server and on every player's client.
 - the settings file;
 - what earns tree XP and what doesn't;
 - the weapon, mining, shield, harvest, growth and unbreaking math;
+- quarrying's reach per level, the vein search and where it stops for the tool;
 - the backpack's storage.
 
 **The client game test** plays through the main flows in survival and takes screenshots into `build/run/clientGameTest/screenshots/` (prefixed `ist_`).
@@ -136,9 +146,9 @@ Install it on the server and on every player's client.
 
 ### Code map
 - `talent/`: the talent list and the four trees, what each level does (`TalentValues`), saved player data with tree XP (`TalentData`), tree level prices and enchantment stacking (`TalentRules`), buying and earning (`Talents`) and attribute talents (`TalentAttributes`).
-- `effect/` and `mixin/`: talents that change game code, like mining speed, loot, weapon damage, block chance and shields, and the hooks that earn tree XP.
+- `effect/` and `mixin/`: talents that change game code, like mining speed, quarrying, loot, weapon damage, block chance and shields, and the hooks that earn tree XP.
 - `inventory/`: the backpack, its menu, pickup overflow and death drops.
-- `client/`: the tabbed talent screen, the HUD bar, the backpack screen, keys and inventory buttons.
+- `client/`: the tabbed talent screen, the HUD bar, the backpack screen, keys (the Quarry key among them) and inventory buttons.
 
 ## Plans
 - Give Lifesteal, Second Wind, Fire Resistance, Water Breathing, Night Vision, Gliding and Flight Speed their effects.

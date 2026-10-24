@@ -27,11 +27,11 @@ class TalentRulesTest {
 
 	@Test
 	void eachTreeTakesTheDesignedXpToMax() {
-		assertEquals(11_992, RULES.xpForLevel(TalentTree.GATHERER.maxLevel()));
+		assertEquals(27_602, RULES.xpForLevel(TalentTree.GATHERER.maxLevel()));
 		assertEquals(16_749, RULES.xpForLevel(TalentTree.WARRIOR.maxLevel()));
 		assertEquals(23_372, RULES.xpForLevel(TalentTree.GUARDIAN.maxLevel()));
 		assertEquals(19_787, RULES.xpForLevel(TalentTree.EXPLORER.maxLevel()));
-		assertEquals(1_849, RULES.cost(TalentTree.GATHERER.maxLevel() - 1), "Gatherer's last level");
+		assertEquals(4_230, RULES.cost(TalentTree.GATHERER.maxLevel() - 1), "Gatherer's last level");
 	}
 
 	@Test

@@ -10,40 +10,27 @@ import net.minecraft.world.entity.player.Input;
 
 /** The tree XP rules from the design's table, as the pure functions the game hooks hand their inputs to. */
 class TreeXpTest {
-	private static final float STONE = 1.5F;
-	private static final float LOG = 2.0F;
-	private static final float ORE = 3.0F;
-
 	// Gatherer
 
 	@Test
-	void stoneHardBlocksAndLogsPayHalfAPoint() {
-		assertEquals(0.5, TreeXp.blockXp(STONE, false, false, true, false), 1e-9, "stone with a pickaxe");
-		assertEquals(0.5, TreeXp.blockXp(50.0F, false, false, true, false), 1e-9, "obsidian with a diamond pickaxe");
-		assertEquals(0.5, TreeXp.blockXp(LOG, true, false, true, false), 1e-9, "a log with an axe");
-		assertEquals(0.5, TreeXp.blockXp(0.2F, true, false, true, false), 1e-9, "anything tagged a log pays, whatever its hardness");
-	}
-
-	@Test
-	void softBlocksPayNothing() {
-		assertEquals(0.0, TreeXp.blockXp(1.4F, false, false, true, false), 1e-9, "just below stone");
-		assertEquals(0.0, TreeXp.blockXp(0.5F, false, false, true, false), 1e-9, "dirt with a shovel");
-		assertEquals(0.0, TreeXp.blockXp(0.0F, false, false, true, false), 1e-9, "a torch breaks at once");
-		assertEquals(0.0, TreeXp.blockXp(-1.0F, false, false, true, false), 1e-9, "unbreakable blocks");
-	}
-
-	@Test
 	void oresPayFivePoints() {
-		assertEquals(5.0, TreeXp.blockXp(ORE, false, true, true, false), 1e-9, "an ore with the right pickaxe");
-		assertEquals(0.5, TreeXp.blockXp(ORE, false, true, true, true), 1e-9,
-				"Silk Touch keeps the ore to place again, so it pays like any block");
+		assertEquals(5.0, TreeXp.blockXp(true, true, false), 1e-9, "an ore with the right pickaxe");
+	}
+
+	@Test
+	void otherBlocksPayNothing() {
+		assertEquals(0.0, TreeXp.blockXp(false, true, false), 1e-9, "stone with a pickaxe, a log with an axe, dirt with a shovel");
+		assertEquals(0.0, TreeXp.blockXp(false, false, false), 1e-9, "stone with a fist");
+	}
+
+	@Test
+	void silkTouchOresPayNothing() {
+		assertEquals(0.0, TreeXp.blockXp(true, true, true), 1e-9, "Silk Touch keeps the ore to place and mine again");
 	}
 
 	@Test
 	void theWrongToolPaysNothing() {
-		assertEquals(0.0, TreeXp.blockXp(STONE, false, false, false, false), 1e-9, "stone with a fist");
-		assertEquals(0.0, TreeXp.blockXp(LOG, true, false, false, false), 1e-9, "a log with a fist");
-		assertEquals(0.0, TreeXp.blockXp(ORE, false, true, false, false), 1e-9, "diamond ore with a stone pickaxe");
+		assertEquals(0.0, TreeXp.blockXp(true, false, false), 1e-9, "diamond ore with a stone pickaxe");
 	}
 
 	@Test

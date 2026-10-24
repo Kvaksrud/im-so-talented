@@ -71,7 +71,7 @@ public final class TalentTooltip {
 
 	/** What the talent does at this level, like "+12% damage". */
 	public static Component effect(Talent talent, int level) {
-		return Component.translatable(talent.effectKey(), TalentValues.effectArgs(talent, level));
+		return Component.translatable(TalentValues.effectKey(talent, level), TalentValues.effectArgs(talent, level));
 	}
 
 	/**

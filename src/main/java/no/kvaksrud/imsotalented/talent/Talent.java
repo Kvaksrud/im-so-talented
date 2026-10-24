@@ -27,6 +27,7 @@ public enum Talent {
 	BOUNTIFUL_HARVEST("bountiful_harvest", TalentTree.GATHERER, 3, prereqs(FASTER_MINING), "minecraft:wheat", false, 1, 3),
 	BACKPACK("backpack", TalentTree.GATHERER, 4, prereqs(CAREFUL_HANDS), "minecraft:bundle", false, 2, 2),
 	FAST_GROWTH("fast_growth", TalentTree.GATHERER, 3, prereqs(BOUNTIFUL_HARVEST), "minecraft:bone_meal", false, 2, 3),
+	QUARRYING("quarrying", TalentTree.GATHERER, 5, prereqs(REACH), "minecraft:iron_ore", false, 2, 0),
 	MORE_LUCK("more_luck", TalentTree.GATHERER, 3, prereqs(REACH, FAST_GROWTH), "minecraft:rabbit_foot", false, 3, 1.5),
 
 	// Warrior: damage with the weapons you use

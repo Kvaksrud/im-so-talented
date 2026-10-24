@@ -13,14 +13,14 @@ import org.junit.jupiter.api.Test;
 /** The shape of the four trees: what the talent screen draws and what buying checks, so a typo in {@link Talent} shows here. */
 class TalentTreeTest {
 	@Test
-	void thereAre34TalentsWith117Levels() {
-		assertEquals(34, Talent.values().length);
-		assertEquals(117, Talent.totalLevels());
+	void thereAre35TalentsWith122Levels() {
+		assertEquals(35, Talent.values().length);
+		assertEquals(122, Talent.totalLevels());
 	}
 
 	@Test
 	void eachTreeTopsOutAtItsTalentLevels() {
-		assertEquals(27, TalentTree.GATHERER.maxLevel());
+		assertEquals(32, TalentTree.GATHERER.maxLevel());
 		assertEquals(29, TalentTree.WARRIOR.maxLevel());
 		assertEquals(31, TalentTree.GUARDIAN.maxLevel());
 		assertEquals(30, TalentTree.EXPLORER.maxLevel());

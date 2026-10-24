@@ -53,16 +53,12 @@ public final class TalentValues {
 	/** Gliding and flight speed are multiplied by 1 + this, per level of Flight Speed. */
 	public static final double FLIGHT_SPEED_MULTIPLIER_PER_LEVEL = 0.05;
 
-	/** Gatherer XP per stone-hard block (see {@link #GATHERER_MIN_HARDNESS}) or log broken with the right tool. */
-	public static final double GATHERER_XP_PER_BLOCK = 0.5;
-	/** Gatherer XP per ore broken with the right tool, instead of the block's. */
+	/** Gatherer XP per ore broken with the right tool and without Silk Touch: the only blocks that pay. */
 	public static final double GATHERER_XP_PER_ORE = 5.0;
 	/** Gatherer XP per mature crop harvested (the seven Bountiful Harvest crops). */
 	public static final double GATHERER_XP_PER_CROP = 1.0;
 	/** Gatherer XP per fish (or other catch) reeled in. */
 	public static final double GATHERER_XP_PER_FISH = 5.0;
-	/** Blocks softer than stone don't count, so placing and breaking dirt or torches earns nothing. */
-	public static final float GATHERER_MIN_HARDNESS = 1.5F;
 	/** Warrior XP per point of damage dealt to a hostile mob, up to the health it had left. */
 	public static final double WARRIOR_XP_PER_DAMAGE = 1.0;
 	/** Guardian XP per point of damage a hostile mob aims at the player, before armor, shield and Block Chance. */
@@ -73,6 +69,15 @@ public final class TalentValues {
 	public static final double EXPLORER_XP_PER_NEW_CHUNK = 1.0;
 	/** Gliding earns this share of the walking rate per block, since it covers ground much faster. */
 	public static final double EXPLORER_GLIDE_FACTOR = 0.5;
+
+	/** Quarrying's cube at level 1 is this many blocks across, one more per level up to the level below the top. */
+	public static final int QUARRY_FIRST_CUBE_SIZE = 3;
+	/**
+	 * The most blocks one Quarrying break takes, the first ore included. The top level takes the whole vein, and this
+	 * is far above any vanilla ore blob (coal's reach a few dozen); it keeps a mountain of placed ore from breaking in
+	 * one tick.
+	 */
+	public static final int QUARRY_MAX_BLOCKS = 256;
 
 	/** Vanilla jump strength, used to show how high a jump gets. */
 	public static final double BASE_JUMP_STRENGTH = 0.42;
@@ -93,6 +98,19 @@ public final class TalentValues {
 	/** More Luck N works like Fortune, Looting and Luck of the Sea N. */
 	public static int luckLevel(int level) {
 		return level;
+	}
+
+	/**
+	 * How many blocks across the cube around the ore is that Quarrying takes the vein from: 3 at level 1 up to 6 at level
+	 * 4, 0 without the talent. The top level has no cube ({@link #quarriesWholeVein}).
+	 */
+	public static int quarryCubeSize(int level) {
+		return level <= 0 ? 0 : QUARRY_FIRST_CUBE_SIZE - 1 + Math.min(level, Talent.QUARRYING.maxLevel() - 1);
+	}
+
+	/** Whether Quarrying takes the whole vein, as it does at the top level, instead of a cube of it. */
+	public static boolean quarriesWholeVein(int level) {
+		return level >= Talent.QUARRYING.maxLevel();
 	}
 
 	/** Unlocked backpack slots: one full row of 9 per level, 36 at the top. */
@@ -240,8 +258,16 @@ public final class TalentValues {
 	}
 
 	/**
-	 * The numbers that fill in a talent's effect text ({@code talent.imsotalented.<id>.effect}) at this level, already
-	 * formatted: percentages as whole percents, blocks with up to one decimal.
+	 * The translation key of a talent's effect text at this level: its own {@link Talent#effectKey()}, except at a level
+	 * that reads differently. Quarrying's top level takes the whole vein instead of a cube.
+	 */
+	public static String effectKey(Talent talent, int level) {
+		return talent == Talent.QUARRYING && quarriesWholeVein(level) ? talent.effectKey() + ".whole_vein" : talent.effectKey();
+	}
+
+	/**
+	 * The numbers that fill in a talent's effect text ({@link #effectKey}) at this level, already formatted:
+	 * percentages as whole percents, blocks with up to one decimal.
 	 */
 	public static Object[] effectArgs(Talent talent, int level) {
 		return switch (talent) {
@@ -264,6 +290,7 @@ public final class TalentValues {
 			case BOUNTIFUL_HARVEST -> new Object[] {harvestBonus(level)};
 			case FAST_GROWTH -> new Object[] {number(growthMultiplier(level))};
 			case CAREFUL_HANDS -> new Object[] {roman(unbreakingBonus(level))};
+			case QUARRYING -> quarriesWholeVein(level) ? new Object[0] : new Object[] {cube(quarryCubeSize(level))};
 			case LIFESTEAL -> new Object[] {percent(lifestealFraction(level))};
 			case SECOND_WIND -> new Object[] {number(secondWindRegen(level), 2)};
 			case FIRE_RESISTANCE -> new Object[] {number(fireResistDuration(level)), number(FIRE_RESISTANCE_COOLDOWN_SECONDS / 60.0)};
@@ -273,6 +300,11 @@ public final class TalentValues {
 			case GLIDING -> new Object[] {number(glideMaxFall(level))};
 			case FLIGHT_SPEED -> new Object[] {percent(flightSpeedMultiplier(level) - 1.0)};
 		};
+	}
+
+	/** 3 -> "3×3×3". */
+	public static String cube(int size) {
+		return size + "×" + size + "×" + size;
 	}
 
 	/** 0.2 -> "20". */
