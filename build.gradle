@@ -1,0 +1,70 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+
+// Mod file naming: imsotalented-fabric-<mod version>+mc<minecraft version>.jar
+version = "${project.mod_version}+mc${project.minecraft_version}"
+
+base {
+	archivesName = project.archives_base_name
+}
+
+loom {
+	splitEnvironmentSourceSets()
+
+	mods {
+		"imsotalented" {
+			sourceSet sourceSets.main
+			sourceSet sourceSets.client
+		}
+	}
+}
+
+fabricApi {
+	// Automated in-game tests live in src/gametest; run them with ./gradlew runClientGameTest
+	configureTests {
+		createSourceSet = true
+		modId = "imsotalented-test"
+		enableGameTests = false
+		enableClientGameTests = true
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	// Unit tests for the parts that don't need a running game (costs, talent math, settings file); ./gradlew test
+	testImplementation platform("org.junit:junit-bom:${project.junit_version}")
+	testImplementation "org.junit.jupiter:junit-jupiter"
+	testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+test {
+	useJUnitPlatform()
+	// Minecraft's logging setup is on the test classpath and writes logs/ into the working directory.
+	def testRunDir = layout.buildDirectory.dir("test-run").get().asFile
+	workingDir = testRunDir
+	doFirst { testRunDir.mkdirs() }
+}
+
+processResources {
+	def version = project.version
+	inputs.property "version", version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = project.java_version as int
+}
+
+java {
+	withSourcesJar()
+
+	sourceCompatibility = JavaVersion.toVersion(project.java_version)
+	targetCompatibility = JavaVersion.toVersion(project.java_version)
+}

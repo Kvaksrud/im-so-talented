@@ -1,0 +1,35 @@
+{
+	"schemaVersion": 1,
+	"id": "imsotalented",
+	"version": "${version}",
+	"name": "I'm So Talented",
+	"description": "Four talent trees, each with its own XP that you earn by doing: mine and farm for Gatherer, fight for Warrior, take hits for Guardian, travel for Explorer. Faster mining, more luck, more health, stronger weapons and armor, a backpack and more.",
+	"authors": [
+		"Patrick"
+	],
+	"license": "CC0-1.0",
+	"icon": "assets/imsotalented/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"no.kvaksrud.imsotalented.ImSoTalented"
+		],
+		"client": [
+			"no.kvaksrud.imsotalented.client.ImSoTalentedClient"
+		]
+	},
+	"mixins": [
+		"imsotalented.mixins.json",
+		"imsotalented.inventory.mixins.json",
+		{
+			"config": "imsotalented.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

@@ -1,0 +1,15 @@
+{
+	"schemaVersion": 1,
+	"id": "imsotalented-test",
+	"version": "1.0.0",
+	"name": "I'm So Talented: tests",
+	"environment": "*",
+	"entrypoints": {
+		"fabric-client-gametest": [
+			"no.kvaksrud.imsotalented.test.ImSoTalentedClientGameTest"
+		]
+	},
+	"depends": {
+		"imsotalented": "*"
+	}
+}

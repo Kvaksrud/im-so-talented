@@ -1,0 +1,15 @@
+{
+	"required": true,
+	"package": "no.kvaksrud.imsotalented.client.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"client": [
+		"AbstractContainerScreenAccessor",
+		"AbstractContainerScreenMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	},
+	"overwrites": {
+		"requireAnnotations": true
+	}
+}
