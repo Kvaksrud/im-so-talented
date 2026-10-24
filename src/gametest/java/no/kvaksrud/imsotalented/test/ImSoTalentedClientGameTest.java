@@ -102,9 +102,15 @@ public class ImSoTalentedClientGameTest implements FabricClientGameTest {
 
 	@Override
 	public void runTest(ClientGameTestContext context) {
-		// A run directory left by an older version must not decide what this run sees: the settings are written fresh
-		// when the world starts, and nothing is pinned.
-		deleteFile(settingsFile());
+		// A settings file as 0.1.0 wrote it: the world's start must replace its vanilla-XP prices with the tree prices
+		// (checkSettingsFile). And nothing is pinned.
+		writeFile(settingsFile(), """
+				cost_base=10
+				cost_growth=1.07
+				enchantment_stacking=highest
+				converter_values=minecraft:diamond=40
+				extra_inventory_pickup=true
+				""");
 		context.runOnClient(_ -> {
 			TreeXpHud.setPinned(null);
 			ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
@@ -190,7 +196,7 @@ public class ImSoTalentedClientGameTest implements FabricClientGameTest {
 		return FabricLoader.getInstance().getConfigDir().resolve(ImSoTalentedConfig.FILE_NAME);
 	}
 
-	/** The world's start wrote the settings file with the defaults: the four-tree prices and the backpack, nothing older. */
+	/** The world's start rewrote the 0.1.0 settings file with the defaults: the four-tree prices and the backpack, nothing older. */
 	private static void checkSettingsFile() {
 		Path configFile = settingsFile();
 		check(Files.isRegularFile(configFile), "Expected the settings file at " + configFile);
@@ -200,11 +206,12 @@ public class ImSoTalentedClientGameTest implements FabricClientGameTest {
 
 		String text = readFile(configFile);
 
-		for (String line : List.of("cost_base=25", "cost_growth=1.18", "enchantment_stacking=highest", "backpack_pickup=true")) {
+		for (String line : List.of("level_cost_base=25", "level_cost_growth=1.18", "enchantment_stacking=highest", "backpack_pickup=true")) {
 			check(text.contains(line), "The settings file should say " + line + ":\n" + text);
 		}
 
-		check(!text.contains("converter") && !text.contains("extra_inventory"), "The settings file should have nothing about the converter or the extra inventory:\n" + text);
+		check(!text.contains("converter") && !text.contains("extra_inventory") && !text.contains("\ncost_base") && !text.contains("\ncost_growth"),
+				"The settings file should have nothing about the converter, the extra inventory or the old prices:\n" + text);
 	}
 
 	/** N opens the talent screen (on the Gatherer tab, the first time) and closes it again. */
@@ -1519,9 +1526,10 @@ public class ImSoTalentedClientGameTest implements FabricClientGameTest {
 		}
 	}
 
-	private static void deleteFile(Path file) {
+	private static void writeFile(Path file, String text) {
 		try {
-			Files.deleteIfExists(file);
+			Files.createDirectories(file.getParent());
+			Files.writeString(file, text);
 		} catch (IOException e) {
 			throw new UncheckedIOException(e);
 		}

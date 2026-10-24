@@ -103,15 +103,15 @@ The first start writes `config/imsotalented.properties`. Only the server's copy 
 
 | Setting | Default | What it does |
 |---|---|---|
-| `cost_base` | `25` | Tree XP the first level of a tree takes. |
-| `cost_growth` | `1.18` | Each next level takes this many times the XP of the one before: level n to n + 1 takes `ceil(cost_base * cost_growth^n)`. `1.0` keeps it flat; allowed is 1.0 to 2.0. |
+| `level_cost_base` | `25` | Tree XP the first level of a tree takes. |
+| `level_cost_growth` | `1.18` | Each next level takes this many times the XP of the one before: level n to n + 1 takes `ceil(level_cost_base * level_cost_growth^n)`. `1.0` keeps it flat; allowed is 1.0 to 2.0. |
 | `enchantment_stacking` | `highest` | `highest`: the higher of the talent and your gear's enchantment counts. `add`: both together. |
 | `backpack_pickup` | `true` | Whether pickups that don't fit your inventory go into your backpack. |
 
 The pinned HUD bar is a client setting, in `config/imsotalented-client.properties`.
 
 ## Updating from 0.1.0
-Talents are reset: they used to be bought with vanilla XP, and the four trees start from scratch. Your vanilla XP is left alone. Items in the old extra inventory aren't lost: on your first join its slots are locked, so they move into your inventory or drop at your feet. The Experience Converter is gone, along with its recipe.
+Talents are reset: they used to be bought with vanilla XP, and the four trees start from scratch. Your vanilla XP is left alone. Items in the old extra inventory aren't lost: on your first join its slots are locked, so they move into your inventory or drop at your feet. The Experience Converter is gone, along with its recipe. The settings file gets the new prices: the old `cost_base` and `cost_growth` priced talents in vanilla XP, so they're replaced by `level_cost_base` and `level_cost_growth` at their defaults.
 
 ## Requirements
 | Minecraft | Loader | Needs | Java |

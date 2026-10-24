@@ -30,8 +30,13 @@ public record ImSoTalentedConfig(TalentRules rules, boolean backpackPickup) {
 
 	public static final ImSoTalentedConfig DEFAULTS = new ImSoTalentedConfig(TalentRules.DEFAULTS, true);
 
-	static final String COST_BASE = "cost_base";
-	static final String COST_GROWTH = "cost_growth";
+	/**
+	 * The price keys were renamed with the four trees: {@code cost_base} and {@code cost_growth} priced talent points in
+	 * vanilla XP, so a 0.1.0 file's values would mean something else now. Under the new names an old file falls back to
+	 * the new defaults, and the rewrite for the missing keys drops the old ones.
+	 */
+	static final String COST_BASE = "level_cost_base";
+	static final String COST_GROWTH = "level_cost_growth";
 	static final String ENCHANTMENT_STACKING = "enchantment_stacking";
 	static final String BACKPACK_PICKUP = "backpack_pickup";
 	private static final List<String> KEYS = List.of(COST_BASE, COST_GROWTH, ENCHANTMENT_STACKING, BACKPACK_PICKUP);
@@ -158,7 +163,7 @@ public record ImSoTalentedConfig(TalentRules rules, boolean backpackPickup) {
 
 				# Each talent tree (Gatherer, Warrior, Guardian, Explorer) has its own XP, earned by doing that tree's
 				# activity, and every tree level is one talent point to spend in that tree. Going from level n to level n+1
-				# takes ceil(cost_base * cost_growth^n) tree XP, the same in every tree.
+				# takes ceil(level_cost_base * level_cost_growth^n) tree XP, the same in every tree.
 				# Defaults: %d and %s. Allowed: 0 to %d, and 1.0 to 2.0.
 				%s=%d
 				%s=%s
