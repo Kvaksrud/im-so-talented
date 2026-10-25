@@ -9,8 +9,9 @@ import org.spongepowered.asm.mixin.injection.ModifyArg;
 
 import net.minecraft.world.entity.player.Player;
 
+/** The talents that change {@code Player} code: Faster Mining and Shield Mastery's axe cooldown. */
 @Mixin(Player.class)
-public abstract class PlayerMixin {
+public abstract class PlayerTalentMixin {
 	/**
 	 * Faster Mining. The first attribute read in getDestroySpeed is {@code mining_efficiency}, which is only added when
 	 * the tool is right for the block (speed above 1), just like Efficiency. Runs on both sides.

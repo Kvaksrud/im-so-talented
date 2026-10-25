@@ -13,45 +13,74 @@ import net.minecraft.world.entity.player.Input;
 class TreeXpTest {
 	// Gatherer
 
+	/** Never paid a plain pickaxe block before: the pacing doesn't hold anything back. */
+	private static final long NEVER = Long.MAX_VALUE;
+
+	@Test
+	void theDesignsGathererRates() {
+		assertEquals(5.0, TalentValues.GATHERER_XP_PER_ORE, "an ore");
+		assertEquals(0.5, TalentValues.GATHERER_XP_PER_BLOCK, "a tenth of an ore for other pickaxe blocks");
+		assertEquals(10, TalentValues.GATHERER_BLOCK_XP_MIN_TICKS, "at most one paid plain block every half second");
+		assertEquals(1.0, TalentValues.GATHERER_XP_PER_CROP);
+		assertEquals(5.0, TalentValues.GATHERER_XP_PER_FISH);
+	}
+
 	@Test
 	void oresPayFivePoints() {
-		assertEquals(5.0, TreeXp.blockXp(true, true, true, false), 1e-9, "an ore with the right pickaxe");
+		assertEquals(5.0, TreeXp.blockXp(true, true, true, false, NEVER), 1e-9, "an ore with the right pickaxe");
 	}
 
 	@Test
 	void otherPickaxeBlocksPayATenthOfAnOre() {
-		assertEquals(0.5, TreeXp.blockXp(false, true, true, false), 1e-9, "stone, deepslate or netherrack with a pickaxe");
-		assertEquals(TalentValues.GATHERER_XP_PER_ORE / 10.0, TalentValues.GATHERER_XP_PER_BLOCK, 1e-9);
+		assertEquals(0.5, TreeXp.blockXp(false, true, true, false, NEVER), 1e-9, "stone, deepslate or netherrack with a pickaxe");
 	}
 
 	@Test
 	void blocksForOtherToolsPayNothing() {
-		assertEquals(0.0, TreeXp.blockXp(false, false, true, false), 1e-9, "sand or dirt with a shovel, a log with an axe");
+		assertEquals(0.0, TreeXp.blockXp(false, false, true, false, NEVER), 1e-9, "sand or dirt with a shovel, a log with an axe");
 	}
 
 	@Test
 	void silkTouchOresPayLikeStone() {
-		assertEquals(0.5, TreeXp.blockXp(true, true, true, true), 1e-9, "Silk Touch keeps the ore to place and mine again");
+		assertTrue(TreeXp.paysAsOre(true, false));
+		assertFalse(TreeXp.paysAsOre(true, true), "Silk Touch keeps the ore to place and mine again");
+		assertFalse(TreeXp.paysAsOre(false, false));
+		assertEquals(0.5, TreeXp.blockXp(true, true, true, true, NEVER), 1e-9, "a Silk Touch ore pays like stone");
 	}
 
 	@Test
 	void theWrongToolPaysNothing() {
-		assertEquals(0.0, TreeXp.blockXp(true, true, false, false), 1e-9, "diamond ore with a stone pickaxe");
-		assertEquals(0.0, TreeXp.blockXp(false, true, false, false), 1e-9, "stone with a fist");
+		assertEquals(0.0, TreeXp.blockXp(true, true, false, false, NEVER), 1e-9, "diamond ore with a stone pickaxe");
+		assertEquals(0.0, TreeXp.blockXp(false, true, false, false, NEVER), 1e-9, "stone with a fist");
 	}
 
 	@Test
-	void matureCropsPayOncePerHarvest() {
-		assertEquals(1.0, TreeXp.cropXp(1, 7, 7), 1e-9, "mature wheat");
-		assertEquals(1.0, TreeXp.cropXp(4, 7, 7), 1e-9, "mature carrots: one harvest, not one per carrot");
-		assertEquals(1.0, TreeXp.cropXp(3, 2, 2), 1e-9, "ripe cocoa");
+	void plainBlocksPayAtMostOnceEveryTenTicks() {
+		assertEquals(0.0, TreeXp.blockXp(false, true, true, false, 0L), 1e-9, "a second block in the same tick (instant-mined netherrack)");
+		assertEquals(0.0, TreeXp.blockXp(false, true, true, false, 9L), 1e-9, "nine ticks after the last paid block");
+		assertEquals(0.5, TreeXp.blockXp(false, true, true, false, 10L), 1e-9, "ten ticks after: pays again");
+		assertEquals(0.5, TreeXp.blockXp(true, true, true, true, 10L), 1e-9, "a Silk Touch ore is paced like stone");
+		assertEquals(0.0, TreeXp.blockXp(true, true, true, true, 3L), 1e-9);
+	}
+
+	@Test
+	void oresAlwaysPayWhateverThePacing() {
+		assertEquals(5.0, TreeXp.blockXp(true, true, true, false, 0L), 1e-9, "a quarry breaks a whole vein in one tick");
+		assertEquals(5.0, TreeXp.blockXp(true, true, true, false, 1L), 1e-9);
+	}
+
+	@Test
+	void ripeCropsPayOncePerHarvest() {
+		assertEquals(1.0, TreeXp.cropXp(1, true), 1e-9, "ripe wheat");
+		assertEquals(1.0, TreeXp.cropXp(4, true), 1e-9, "ripe carrots: one harvest, not one per carrot");
+		assertEquals(1.0, TreeXp.cropXp(3, true), 1e-9, "ripe cocoa");
 	}
 
 	@Test
 	void youngOrEmptyCropsPayNothing() {
-		assertEquals(0.0, TreeXp.cropXp(1, 3, 7), 1e-9, "a young carrot drops a carrot, but can be replanted at once");
-		assertEquals(0.0, TreeXp.cropXp(0, 7, 7), 1e-9, "a harvest without the main item");
-		assertEquals(0.0, TreeXp.cropXp(0, 0, 7), 1e-9);
+		assertEquals(0.0, TreeXp.cropXp(1, false), 1e-9, "a young carrot drops a carrot, but can be replanted at once");
+		assertEquals(0.0, TreeXp.cropXp(0, true), 1e-9, "a harvest without the main item");
+		assertEquals(0.0, TreeXp.cropXp(0, false), 1e-9);
 	}
 
 	@Test
@@ -86,28 +115,38 @@ class TreeXpTest {
 
 	@Test
 	void guardianCountsTheRawDamageTwice() {
-		assertEquals(12.0, TreeXp.guardianXp(6.0F, false, 0.0F, 20.0F), 1e-6, "6 damage aimed at the player, armor or not");
-		assertEquals(1.0, TreeXp.guardianXp(0.5F, false, 0.0F, 20.0F), 1e-6);
-	}
-
-	@Test
-	void inTheDamageCooldownOnlyTheHarderPartCounts() {
-		assertEquals(4.0, TreeXp.guardianXp(6.0F, true, 4.0F, 20.0F), 1e-6, "vanilla takes 6 - 4");
-		assertEquals(0.0, TreeXp.guardianXp(4.0F, true, 4.0F, 20.0F), 1e-9, "not harder than the last hit: vanilla ignores it");
-		assertEquals(0.0, TreeXp.guardianXp(3.0F, true, 4.0F, 20.0F), 1e-9, "a crowd swinging at once pays for the hits that land");
+		assertEquals(2.0, TalentValues.GUARDIAN_XP_PER_DAMAGE);
+		assertEquals(12.0, TreeXp.guardianXp(6.0F, 20.0F), 1e-6, "6 damage aimed at the player, armor or not");
+		assertEquals(1.0, TreeXp.guardianXp(0.5F, 20.0F), 1e-6);
 	}
 
 	@Test
 	void oneHitCountsForAtMostTheMaxHealth() {
-		assertEquals(40.0, TreeXp.guardianXp(60.0F, false, 0.0F, 20.0F), 1e-6, "a point-blank creeper on a player with 20 health");
-		assertEquals(60.0, TreeXp.guardianXp(60.0F, false, 0.0F, 30.0F), 1e-6, "More Health raises the cap");
+		assertEquals(40.0, TreeXp.guardianXp(60.0F, 20.0F), 1e-6, "a point-blank creeper on a player with 20 health");
+		assertEquals(60.0, TreeXp.guardianXp(60.0F, 30.0F), 1e-6, "More Health raises the cap");
+		assertEquals(0.0, TreeXp.guardianXp(6.0F, -1.0F), 1e-9, "a broken max health caps at nothing");
 	}
 
 	@Test
 	void harmlessHitsPayNothing() {
-		assertEquals(0.0, TreeXp.guardianXp(0.0F, false, 0.0F, 20.0F), 1e-9);
-		assertEquals(0.0, TreeXp.guardianXp(-2.0F, false, 0.0F, 20.0F), 1e-9);
-		assertEquals(0.0, TreeXp.guardianXp(Float.NaN, false, 0.0F, 20.0F), 1e-9);
+		assertEquals(0.0, TreeXp.guardianXp(0.0F, 20.0F), 1e-9, "the cooldown let nothing of it count");
+		assertEquals(0.0, TreeXp.guardianXp(-2.0F, 20.0F), 1e-9);
+		assertEquals(0.0, TreeXp.guardianXp(Float.NaN, 20.0F), 1e-9);
+		assertEquals(0.0, TreeXp.guardianXp(Float.POSITIVE_INFINITY, 20.0F), 1e-9);
+	}
+
+	@Test
+	void aCrowdOnARaisedShieldPaysLikeItsHardestHit() {
+		// Five zombies swing at once at a shield: vanilla takes the first and ignores the rest in its cooldown, and so
+		// does Guardian, though the shield left vanilla's own lastHurt at 0.
+		GuardianCooldown cooldown = new GuardianCooldown();
+		double xp = 0.0;
+
+		for (int zombie = 0; zombie < 5; zombie++) {
+			xp += TreeXp.guardianXp(cooldown.count(3.0F, 100L, false), 20.0F);
+		}
+
+		assertEquals(6.0, xp, 1e-6);
 	}
 
 	// Explorer
@@ -165,6 +204,13 @@ class TreeXpTest {
 		assertEquals(0.0, TreeXp.travelXp(0.0, 0.0, 1.0), 1e-9);
 		assertEquals(0.0, TreeXp.travelXp(3.0, 4.0, 0.0), 1e-9, "riding");
 		assertEquals(0.0, TreeXp.travelXp(Double.NaN, 0.0, 1.0), 1e-9);
+	}
+
+	@Test
+	void aNewChunkPaysOnceAndHalfWhileGliding() {
+		assertEquals(1.0, TalentValues.EXPLORER_XP_PER_NEW_CHUNK);
+		assertEquals(1.0, TreeXp.newChunkXp(false), 1e-9, "walking, riding or teleporting into a new chunk");
+		assertEquals(0.5, TreeXp.newChunkXp(true), 1e-9, "an elytra crosses chunks far faster, so half");
 	}
 
 	private static double factor(boolean passenger, boolean flying, boolean gliding, boolean steering, boolean swimming,

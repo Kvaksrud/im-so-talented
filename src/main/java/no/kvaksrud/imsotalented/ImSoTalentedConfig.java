@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Properties;
 
 import no.kvaksrud.imsotalented.talent.TalentRules;
@@ -17,7 +18,9 @@ import org.slf4j.LoggerFactory;
 /**
  * Settings from config/imsotalented.properties, which only the server reads (the client gets the rules it needs when
  * joining). A missing file is written with the defaults and missing keys are added to it. A value that doesn't parse
- * falls back to its default, and one out of range is clamped.
+ * falls back to its default, and one out of range is clamped. A key that isn't a setting is ignored with a warning (and
+ * left out when the file is rewritten), and 0.1.0's {@code extra_inventory_pickup} carries over to {@code
+ * backpack_pickup}.
  *
  * @param rules          tree level prices and how talents combine with enchantments
  * @param backpackPickup whether picked-up items that don't fit the inventory go into the backpack
@@ -26,26 +29,42 @@ public record ImSoTalentedConfig(TalentRules rules, boolean backpackPickup) {
 	private static final Logger LOGGER = LoggerFactory.getLogger(ImSoTalented.MOD_ID);
 
 	public static final String FILE_NAME = "imsotalented.properties";
-	public static final int MAX_POINTS = 1_000_000;
+	/** The highest {@code level_cost_base} allowed; a higher one is clamped to it. */
+	public static final int MAX_LEVEL_COST_BASE = 1_000_000;
 
 	public static final ImSoTalentedConfig DEFAULTS = new ImSoTalentedConfig(TalentRules.DEFAULTS, true);
 
 	/**
 	 * The price keys were renamed with the four trees: {@code cost_base} and {@code cost_growth} priced talent points in
 	 * vanilla XP, so a 0.1.0 file's values would mean something else now. Under the new names an old file falls back to
-	 * the new defaults, and the rewrite for the missing keys drops the old ones.
+	 * the new defaults, and the rewrite for the missing keys drops the old ones (with a warning, see
+	 * {@link #RETIRED_KEYS}).
 	 */
-	static final String COST_BASE = "level_cost_base";
-	static final String COST_GROWTH = "level_cost_growth";
+	static final String LEVEL_COST_BASE = "level_cost_base";
+	static final String LEVEL_COST_GROWTH = "level_cost_growth";
 	static final String ENCHANTMENT_STACKING = "enchantment_stacking";
 	static final String BACKPACK_PICKUP = "backpack_pickup";
-	private static final List<String> KEYS = List.of(COST_BASE, COST_GROWTH, ENCHANTMENT_STACKING, BACKPACK_PICKUP);
+	private static final List<String> KEYS = List.of(LEVEL_COST_BASE, LEVEL_COST_GROWTH, ENCHANTMENT_STACKING, BACKPACK_PICKUP);
 
-	/** Reads the file, writing it first if it is missing or lacks a setting. Never fails: the defaults stand in. */
+	/** 0.1.0's name for {@link #BACKPACK_PICKUP}: read when the new key is missing, so a rename doesn't flip the choice. */
+	static final String EXTRA_INVENTORY_PICKUP = "extra_inventory_pickup";
+
+	/** The keys 0.1.0 had that are gone, with what took their place, for the warning about each. */
+	private static final Map<String, String> RETIRED_KEYS = Map.of(
+			"cost_base", "it priced talents in vanilla XP; " + LEVEL_COST_BASE + " (tree XP for the first tree level) replaces it, so its value doesn't carry over",
+			"cost_growth", "it priced talents in vanilla XP; " + LEVEL_COST_GROWTH + " (how much more each tree level takes) replaces it, so its value doesn't carry over",
+			"converter_values", "the Experience Converter is gone and nothing replaces it: tree XP is earned by playing",
+			EXTRA_INVENTORY_PICKUP, "it is called " + BACKPACK_PICKUP + " now");
+
+	/**
+	 * Reads the file, writing it first if it is missing or lacks a setting. Never fails: the defaults stand in. Each key
+	 * the file has that isn't a setting gets one warning, and a rewrite is logged.
+	 */
 	public static ImSoTalentedConfig load(Path file) {
 		Properties properties = new Properties();
+		boolean exists = Files.exists(file);
 
-		if (Files.exists(file)) {
+		if (exists) {
 			try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
 				properties.load(reader);
 			} catch (IOException | IllegalArgumentException e) {
@@ -54,20 +73,58 @@ public record ImSoTalentedConfig(TalentRules rules, boolean backpackPickup) {
 			}
 		}
 
+		// The 0.1.0 pickup key counts only while the new one is missing; the rewrite then saves it under the new name.
+		boolean oldPickup = !properties.containsKey(BACKPACK_PICKUP) && properties.containsKey(EXTRA_INVENTORY_PICKUP);
 		TalentRules defaults = DEFAULTS.rules;
 		TalentRules rules = new TalentRules(
-				readInt(properties, file, COST_BASE, defaults.costBase(), 0, MAX_POINTS),
-				readDouble(properties, file, COST_GROWTH, defaults.costGrowth(), 1.0, 2.0),
+				readInt(properties, file, LEVEL_COST_BASE, defaults.costBase(), 0, MAX_LEVEL_COST_BASE),
+				readDouble(properties, file, LEVEL_COST_GROWTH, defaults.costGrowth(), 1.0, 2.0),
 				readStacking(properties, file, defaults.stacking()));
 		ImSoTalentedConfig config = new ImSoTalentedConfig(
 				rules,
-				readBoolean(properties, file, BACKPACK_PICKUP, DEFAULTS.backpackPickup));
+				readBoolean(properties, file, oldPickup ? EXTRA_INVENTORY_PICKUP : BACKPACK_PICKUP, DEFAULTS.backpackPickup));
 
-		if (!properties.stringPropertyNames().containsAll(KEYS)) {
-			config.save(file);
+		List<String> missing = KEYS.stream().filter(key -> !properties.containsKey(key)).toList();
+		List<String> unused = properties.stringPropertyNames().stream().filter(key -> !KEYS.contains(key)).sorted().toList();
+		boolean rewrite = !missing.isEmpty();
+
+		for (String key : unused) {
+			warnUnused(file, key, oldPickup, rewrite);
+		}
+
+		if (rewrite && config.save(file)) {
+			if (exists) {
+				LOGGER.info("Rewrote {} to add {}{}", file, String.join(", ", missing),
+						unused.isEmpty() ? "" : " and leave out " + String.join(", ", unused));
+			} else {
+				LOGGER.info("Wrote {} with the default settings", file);
+			}
 		}
 
 		return config;
+	}
+
+	/** One warning for a key that isn't a setting: what replaced it if it is an old one, and what happens to it. */
+	private static void warnUnused(Path file, String key, boolean oldPickup, boolean rewrite) {
+		String fate = rewrite ? "It is left out of the rewritten file." : "It is ignored.";
+
+		if (key.equals(EXTRA_INVENTORY_PICKUP)) {
+			LOGGER.warn("{} in {} is no longer used: {}{}", key, file, RETIRED_KEYS.get(key),
+					oldPickup ? ", and the rewritten file keeps its value under that name." : ", which the file has too. " + fate);
+		} else if (RETIRED_KEYS.containsKey(key)) {
+			LOGGER.warn("{} in {} is no longer used: {}. {}", key, file, RETIRED_KEYS.get(key), fate);
+		} else {
+			LOGGER.warn("{} in {} is not a setting (they are {}). {}", key, file, String.join(", ", KEYS), fate);
+		}
+	}
+
+	/** The settings in the file's key=value form, for the log line saying which ones are in effect. */
+	public String summary() {
+		return "%s=%d, %s=%s, %s=%s, %s=%s".formatted(
+				LEVEL_COST_BASE, this.rules.costBase(),
+				LEVEL_COST_GROWTH, this.rules.costGrowth(),
+				ENCHANTMENT_STACKING, this.rules.stacking().id(),
+				BACKPACK_PICKUP, this.backpackPickup);
 	}
 
 	private static int readInt(Properties properties, Path file, String key, int fallback, int min, int max) {
@@ -155,8 +212,12 @@ public record ImSoTalentedConfig(TalentRules rules, boolean backpackPickup) {
 		});
 	}
 
-	/** Writes every setting with an explanation. A write failure is logged; the settings still apply. */
-	public void save(Path file) {
+	/**
+	 * Writes every setting with an explanation. A write failure is logged; the settings still apply.
+	 *
+	 * @return whether the file was written
+	 */
+	public boolean save(Path file) {
 		String text = """
 				# I'm So Talented settings. Only the server's copy counts (in singleplayer, this one).
 				# Changes take effect the next time a world is opened or the server starts.
@@ -180,9 +241,9 @@ public record ImSoTalentedConfig(TalentRules rules, boolean backpackPickup) {
 				# Default: %s
 				%s=%s
 				""".formatted(
-				DEFAULTS.rules.costBase(), DEFAULTS.rules.costGrowth(), MAX_POINTS,
-				COST_BASE, this.rules.costBase(),
-				COST_GROWTH, this.rules.costGrowth(),
+				DEFAULTS.rules.costBase(), DEFAULTS.rules.costGrowth(), MAX_LEVEL_COST_BASE,
+				LEVEL_COST_BASE, this.rules.costBase(),
+				LEVEL_COST_GROWTH, this.rules.costGrowth(),
 				DEFAULTS.rules.stacking().id(), ENCHANTMENT_STACKING, this.rules.stacking().id(),
 				DEFAULTS.backpackPickup, BACKPACK_PICKUP, this.backpackPickup);
 
@@ -194,8 +255,10 @@ public record ImSoTalentedConfig(TalentRules rules, boolean backpackPickup) {
 			}
 
 			Files.writeString(file, text, StandardCharsets.UTF_8);
+			return true;
 		} catch (IOException e) {
 			LOGGER.warn("Could not write {}: {}", file, e.toString());
+			return false;
 		}
 	}
 }

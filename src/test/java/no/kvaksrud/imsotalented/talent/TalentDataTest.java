@@ -2,7 +2,6 @@ package no.kvaksrud.imsotalented.talent;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -14,6 +13,7 @@ import org.junit.jupiter.api.Test;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.IntTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.LongTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.StringTag;
@@ -190,20 +190,65 @@ class TalentDataTest {
 	}
 
 	@Test
-	void partsOfTheWrongTypeFailTheRead() {
-		CompoundTag xpNotACompound = new CompoundTag();
+	void aPartOfTheWrongTypeIsSkippedAndTheRestKept() {
+		// A thrown exception here would escape the player load and lock the player out of the world on every join.
+		CompoundTag xpNotACompound = TalentData.EMPTY.with(Talent.MORE_HEALTH, 2).withDisabled(Talent.MORE_HEALTH, true).toNbt();
 		xpNotACompound.putInt("xp", 5);
-		assertThrows(IllegalArgumentException.class, () -> TalentData.fromNbt(xpNotACompound));
+		assertEquals(TalentData.EMPTY.with(Talent.MORE_HEALTH, 2).withDisabled(Talent.MORE_HEALTH, true), TalentData.fromNbt(xpNotACompound),
+				"tree XP that isn't a compound reads as none; the levels and toggles stay");
 
-		CompoundTag xpNotANumber = new CompoundTag();
+		CompoundTag levelsNotACompound = TalentData.EMPTY.withXp(TalentTree.GATHERER, 300L).toNbt();
+		levelsNotACompound.put("levels", StringTag.valueOf("lots"));
+		assertEquals(TalentData.EMPTY.withXp(TalentTree.GATHERER, 300L), TalentData.fromNbt(levelsNotACompound));
+
+		CompoundTag disabledNotAList = TalentData.EMPTY.with(Talent.STEP_ASSIST, 1).withXp(TalentTree.EXPLORER, 9L).toNbt();
+		disabledNotAList.putString("disabled", Talent.STEP_ASSIST.id());
+		assertEquals(TalentData.EMPTY.with(Talent.STEP_ASSIST, 1).withXp(TalentTree.EXPLORER, 9L), TalentData.fromNbt(disabledNotAList),
+				"toggles that aren't a list read as none (everything on)");
+	}
+
+	@Test
+	void anEntryOfTheWrongTypeIsSkippedAndTheRestKept() {
+		CompoundTag tag = new CompoundTag();
+		CompoundTag levels = new CompoundTag();
+		levels.putInt(Talent.FASTER_MINING.id(), 3);
+		levels.put(Talent.REACH.id(), StringTag.valueOf("two"));
+		tag.put("levels", levels);
+
+		ListTag disabled = new ListTag();
+		disabled.add(StringTag.valueOf(Talent.FASTER_MINING.id()));
+		disabled.add(IntTag.valueOf(4));
+		tag.put("disabled", disabled);
+
 		CompoundTag xp = new CompoundTag();
 		xp.put(TalentTree.GATHERER.id(), StringTag.valueOf("lots"));
-		xpNotANumber.put("xp", xp);
-		assertThrows(IllegalArgumentException.class, () -> TalentData.fromNbt(xpNotANumber));
+		xp.putLong(TalentTree.WARRIOR.id(), 77L);
+		tag.put("xp", xp);
 
-		CompoundTag disabledNotAList = new CompoundTag();
-		disabledNotAList.putString("disabled", Talent.STEP_ASSIST.id());
-		assertThrows(IllegalArgumentException.class, () -> TalentData.fromNbt(disabledNotAList));
+		TalentData data = TalentData.fromNbt(tag);
+		assertEquals(Map.of(Talent.FASTER_MINING.id(), 3), data.levels(), "the level that isn't a number is skipped");
+		assertEquals(Set.of(Talent.FASTER_MINING.id()), data.disabled(), "the toggle that isn't an id is skipped");
+		assertEquals(Map.of(TalentTree.WARRIOR.id(), 77L), data.xp(), "the XP that isn't a number is skipped");
+	}
+
+	@Test
+	void theCodecNeverFailsOnABadSave() {
+		CompoundTag tag = new CompoundTag();
+		tag.putInt("xp", 5);
+		tag.putString("disabled", "everything");
+		tag.putDouble("levels", 1.0);
+		assertEquals(TalentData.EMPTY, TalentData.CODEC.parse(NbtOps.INSTANCE, tag).getOrThrow(), "a save that's all wrong reads as a new player");
+	}
+
+	@Test
+	void levelZeroClearsTheToggle() {
+		TalentData off = TalentData.EMPTY.with(Talent.HIGHER_JUMPING, 5).withDisabled(Talent.HIGHER_JUMPING, true);
+		TalentData removed = off.with(Talent.HIGHER_JUMPING, 0);
+		assertFalse(removed.isDisabled(Talent.HIGHER_JUMPING), "a talent without a level can't be toggled off");
+		assertEquals(TalentData.EMPTY, removed);
+		assertFalse(removed.with(Talent.HIGHER_JUMPING, 2).isDisabled(Talent.HIGHER_JUMPING), "bought again, it starts on");
+		assertEquals(0, off.with(Talent.HIGHER_JUMPING, -3).level(Talent.HIGHER_JUMPING));
+		assertFalse(off.with(Talent.HIGHER_JUMPING, -3).isDisabled(Talent.HIGHER_JUMPING), "a negative level is level 0 too");
 	}
 
 	@Test

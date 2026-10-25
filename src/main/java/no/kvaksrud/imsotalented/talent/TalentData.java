@@ -9,6 +9,9 @@ import java.util.Map;
 import java.util.Set;
 
 import com.mojang.serialization.Codec;
+import no.kvaksrud.imsotalented.ImSoTalented;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -34,6 +37,8 @@ import io.netty.buffer.ByteBuf;
  */
 public record TalentData(Map<String, Integer> levels, Set<String> disabled, Map<String, Long> xp) {
 	public static final TalentData EMPTY = new TalentData(Map.of(), Set.of(), Map.of());
+
+	private static final Logger LOGGER = LoggerFactory.getLogger(ImSoTalented.MOD_ID);
 
 	private static final String LEVELS_KEY = "levels";
 	private static final String DISABLED_KEY = "disabled";
@@ -76,17 +81,20 @@ public record TalentData(Map<String, Integer> levels, Set<String> disabled, Map<
 		return Math.max(0L, this.xp.getOrDefault(tree.id(), 0L));
 	}
 
-	/** A copy with this talent at this level (clamped to 0..max); level 0 removes it. The rest is kept. */
+	/** A copy with this talent at this level (clamped to 0..max); level 0 removes it and its toggle. The rest is kept. */
 	public TalentData with(Talent talent, int level) {
 		Map<String, Integer> copy = new HashMap<>(this.levels);
 		int clamped = Math.clamp(level, 0, talent.maxLevel());
 
 		if (clamped == 0) {
 			copy.remove(talent.id());
-		} else {
-			copy.put(talent.id(), clamped);
+			// Only an owned talent can be toggled off: one bought again later starts on.
+			Set<String> disabled = new HashSet<>(this.disabled);
+			disabled.remove(talent.id());
+			return new TalentData(copy, disabled, this.xp);
 		}
 
+		copy.put(talent.id(), clamped);
 		return new TalentData(copy, this.disabled, this.xp);
 	}
 
@@ -209,58 +217,73 @@ public record TalentData(Map<String, Integer> levels, Set<String> disabled, Map<
 		return tag;
 	}
 
-	/** Reads a saved compound; a missing part reads as empty, a part of the wrong type fails the read. */
+	/**
+	 * Reads a saved compound leniently: a missing part reads as empty, and an entry or a part of the wrong type is
+	 * skipped with a warning, never the whole compound. A thrown exception here would escape Minecraft's player load
+	 * and lock the player out of the world on every join. Ids this version doesn't know are kept (and noted at debug),
+	 * so a downgrade and an upgrade again lose nothing.
+	 */
 	public static TalentData fromNbt(CompoundTag tag) {
 		Map<String, Integer> levels = new HashMap<>();
 		Set<String> disabled = new HashSet<>();
 		Map<String, Long> xp = new HashMap<>();
 
 		for (Map.Entry<String, Tag> entry : compound(tag, LEVELS_KEY).entrySet()) {
-			levels.put(entry.getKey(), number(LEVELS_KEY, entry).intValue());
+			if (entry.getValue() instanceof NumericTag numeric) {
+				levels.put(entry.getKey(), numeric.intValue());
+				Talent.byId(entry.getKey()).ifPresentOrElse(
+						talent -> {
+							if (numeric.intValue() > talent.maxLevel()) {
+								LOGGER.debug("Saved level {} for talent {} is above its top level {}; it counts as {}", numeric.intValue(), talent.id(), talent.maxLevel(), talent.maxLevel());
+							}
+						},
+						() -> LOGGER.debug("Keeping saved level for unknown talent {}", entry.getKey()));
+			} else {
+				LOGGER.warn("Skipping saved talent level {}: expected a number, got {}", entry.getKey(), entry.getValue());
+			}
 		}
 
 		Tag disabledTag = tag.get(DISABLED_KEY);
 
-		if (disabledTag != null) {
-			if (!(disabledTag instanceof ListTag list)) {
-				throw new IllegalArgumentException(DISABLED_KEY + " must be a string list, got " + disabledTag.getClass().getSimpleName());
-			}
-
+		if (disabledTag instanceof ListTag list) {
 			for (Tag element : list) {
-				if (!(element instanceof StringTag string)) {
-					throw new IllegalArgumentException(DISABLED_KEY + " must hold strings, got " + element.getClass().getSimpleName());
+				if (element instanceof StringTag string) {
+					disabled.add(string.value());
+				} else {
+					LOGGER.warn("Skipping a saved toggled-off talent: expected an id, got {}", element);
 				}
-
-				disabled.add(string.value());
 			}
+		} else if (disabledTag != null) {
+			LOGGER.warn("Skipping the saved toggled-off talents: expected a list of ids, got {}", disabledTag);
 		}
 
 		for (Map.Entry<String, Tag> entry : compound(tag, XP_KEY).entrySet()) {
-			xp.put(entry.getKey(), number(XP_KEY, entry).longValue());
+			if (entry.getValue() instanceof NumericTag numeric) {
+				xp.put(entry.getKey(), numeric.longValue());
+
+				if (TalentTree.byId(entry.getKey()).isEmpty()) {
+					LOGGER.debug("Keeping saved XP for unknown tree {}", entry.getKey());
+				}
+			} else {
+				LOGGER.warn("Skipping saved tree XP {}: expected a number, got {}", entry.getKey(), entry.getValue());
+			}
 		}
 
 		return new TalentData(levels, disabled, xp);
 	}
 
+	/** A part of the saved compound, or an empty one when it's missing or not a compound (which is logged). */
 	private static CompoundTag compound(CompoundTag tag, String key) {
 		Tag part = tag.get(key);
 
-		if (part == null) {
-			return new CompoundTag();
+		if (part instanceof CompoundTag compound) {
+			return compound;
 		}
 
-		if (!(part instanceof CompoundTag compound)) {
-			throw new IllegalArgumentException(key + " must be a compound, got " + part.getClass().getSimpleName());
+		if (part != null) {
+			LOGGER.warn("Skipping the saved {}: expected a compound, got {}", key, part);
 		}
 
-		return compound;
-	}
-
-	private static NumericTag number(String key, Map.Entry<String, Tag> entry) {
-		if (!(entry.getValue() instanceof NumericTag numeric)) {
-			throw new IllegalArgumentException(key + " entry " + entry.getKey() + " must be a number, got " + entry.getValue().getClass().getSimpleName());
-		}
-
-		return numeric;
+		return new CompoundTag();
 	}
 }

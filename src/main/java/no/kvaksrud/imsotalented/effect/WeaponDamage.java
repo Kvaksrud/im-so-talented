@@ -1,7 +1,6 @@
 package no.kvaksrud.imsotalented.effect;
 
 import no.kvaksrud.imsotalented.talent.Talent;
-import no.kvaksrud.imsotalented.talent.TalentData;
 import no.kvaksrud.imsotalented.talent.TalentValues;
 import no.kvaksrud.imsotalented.talent.Talents;
 
@@ -29,10 +28,9 @@ public final class WeaponDamage {
 			return damage;
 		}
 
-		TalentData talents = Talents.data(attacker);
-		int general = talents.level(Talent.STRONGER_WEAPONS);
+		int general = Talents.effectiveLevel(attacker, Talent.STRONGER_WEAPONS);
 		Talent specialist = type.specialist();
-		int specialistLevel = specialist != null ? talents.level(specialist) : 0;
+		int specialistLevel = specialist != null ? Talents.effectiveLevel(attacker, specialist) : 0;
 
 		if (general <= 0 && specialistLevel <= 0) {
 			return damage;

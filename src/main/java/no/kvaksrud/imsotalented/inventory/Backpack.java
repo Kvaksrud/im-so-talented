@@ -91,17 +91,23 @@ public class Backpack extends SimpleContainer {
 		return filled;
 	}
 
+	/** The saved entries, each read on its own; one that can't be read or has no slot here is skipped with its raw data logged. */
 	private static Backpack fromSaved(List<Dynamic<?>> saved) {
-		Backpack inventory = new Backpack();
+		Backpack backpack = new Backpack();
 
 		for (Dynamic<?> entry : saved) {
 			DataResult<ItemStackWithSlot> result = ItemStackWithSlot.CODEC.parse(entry);
-			result.error().ifPresent(error -> LOGGER.warn("Skipping a backpack item that could not be read: {}", error.message()));
-			result.result()
-					.filter(item -> item.isValidInContainer(inventory.getContainerSize()))
-					.ifPresent(item -> inventory.setItem(item.slot(), item.stack()));
+			result.error().ifPresent(error -> LOGGER.warn("Skipping a backpack item that could not be read ({}): {}", error.message(), entry.getValue()));
+			result.result().ifPresent(item -> {
+				if (item.isValidInContainer(backpack.getContainerSize())) {
+					backpack.setItem(item.slot(), item.stack());
+				} else {
+					LOGGER.warn("Skipping a backpack item in slot {}, past the backpack's {} slots: {}", item.slot(), backpack.getContainerSize(),
+							entry.getValue());
+				}
+			});
 		}
 
-		return inventory;
+		return backpack;
 	}
 }

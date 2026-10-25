@@ -2,8 +2,10 @@ package no.kvaksrud.imsotalented.talent;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -120,5 +122,46 @@ class TalentTreeTest {
 
 		assertTrue(Talent.byId("extra_inventory").isEmpty(), "Extra Inventory is the Backpack now");
 		assertTrue(TalentTree.byId("combat").isEmpty());
+	}
+
+	@Test
+	void exactlyTheseNineTalentsHaveAToggle() {
+		Set<Talent> toggleable = EnumSet.noneOf(Talent.class);
+
+		for (Talent talent : Talent.values()) {
+			if (talent.toggleable()) {
+				toggleable.add(talent);
+			}
+		}
+
+		assertEquals(EnumSet.of(Talent.FIRE_RESISTANCE, Talent.WATER_BREATHING, Talent.NIGHT_VISION, Talent.FASTER_RUNNING,
+				Talent.HIGHER_JUMPING, Talent.STEP_ASSIST, Talent.SWIM_SPEED, Talent.SAFE_FALLING, Talent.GLIDING), toggleable);
+	}
+
+	@Test
+	void exactlyTheseSevenTalentsArentInTheGameYet() {
+		Set<Talent> notYet = EnumSet.noneOf(Talent.class);
+
+		for (Talent talent : Talent.values()) {
+			if (!talent.implemented()) {
+				notYet.add(talent);
+			}
+		}
+
+		assertEquals(EnumSet.of(Talent.LIFESTEAL, Talent.SECOND_WIND, Talent.FIRE_RESISTANCE, Talent.WATER_BREATHING, Talent.NIGHT_VISION,
+				Talent.GLIDING, Talent.FLIGHT_SPEED), notYet);
+
+		for (TalentTree tree : TalentTree.values()) {
+			assertTrue(tree.root().implemented(), tree.id() + "'s root works, so every tree can be started");
+			assertTrue(tree.xpTalent().implemented(), tree.id() + "'s XP talent works");
+		}
+	}
+
+	@Test
+	void theTreesListsAreFixed() {
+		assertSame(TalentTree.GATHERER.talents(), TalentTree.GATHERER.talents(), "worked out once");
+		assertThrows(UnsupportedOperationException.class, () -> TalentTree.WARRIOR.talents().add(Talent.FASTER_MINING), "and can't be changed");
+		assertEquals(List.of(Talent.FASTER_RUNNING, Talent.HIGHER_JUMPING, Talent.STEP_ASSIST, Talent.SWIM_SPEED, Talent.EXPLORER_XP,
+				Talent.SAFE_FALLING, Talent.GLIDING, Talent.FLIGHT_SPEED), TalentTree.EXPLORER.talents(), "in declaration order");
 	}
 }

@@ -19,6 +19,12 @@ public enum TalentTree {
 
 	private final String id;
 	private final int color;
+	/**
+	 * Filled on first use, after both enums are initialised ({@link Talent} refers to this enum in its constants);
+	 * volatile because the client and the integrated server both read them.
+	 */
+	private volatile List<Talent> talents;
+	private volatile int maxLevel = -1;
 
 	TalentTree(String id, int color) {
 		this.id = id;
@@ -40,15 +46,19 @@ public enum TalentTree {
 
 	/** This tree's talents in declaration order, which is the order they unlock in. */
 	public List<Talent> talents() {
-		List<Talent> talents = new ArrayList<>();
+		if (this.talents == null) {
+			List<Talent> talents = new ArrayList<>();
 
-		for (Talent talent : Talent.values()) {
-			if (talent.tree() == this) {
-				talents.add(talent);
+			for (Talent talent : Talent.values()) {
+				if (talent.tree() == this) {
+					talents.add(talent);
+				}
 			}
+
+			this.talents = Collections.unmodifiableList(talents);
 		}
 
-		return Collections.unmodifiableList(talents);
+		return this.talents;
 	}
 
 	/** The talent the tree starts from: the one with no prereqs, buyable from the start. */
@@ -74,13 +84,17 @@ public enum TalentTree {
 
 	/** The tree's top level: one level per talent level in it, so a maxed tree has paid for every talent. */
 	public int maxLevel() {
-		int total = 0;
+		if (this.maxLevel < 0) {
+			int total = 0;
 
-		for (Talent talent : this.talents()) {
-			total += talent.maxLevel();
+			for (Talent talent : this.talents()) {
+				total += talent.maxLevel();
+			}
+
+			this.maxLevel = total;
 		}
 
-		return total;
+		return this.maxLevel;
 	}
 
 	public static Optional<TalentTree> byId(String id) {

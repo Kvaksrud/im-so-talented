@@ -18,8 +18,8 @@ import net.minecraft.world.entity.player.Player;
  * is one point to spend in that tree. Vanilla XP plays no part.
  */
 public final class Talents {
-	/** The keybind named in the level-up message: the client resolves it to the key the player bound. */
-	private static final String TALENT_TREE_KEY = "key.imsotalented.talent_tree";
+	/** The talent tree's key mapping, by name: messages show the key the player bound to it, resolved on their client. */
+	public static final String TALENT_TREE_KEY = "key.imsotalented.talent_tree";
 
 	private Talents() {
 	}
@@ -28,8 +28,25 @@ public final class Talents {
 		return player.getAttachedOrElse(ImSoTalented.TALENTS, TalentData.EMPTY);
 	}
 
+	/** The level bought: what the screen, prereqs and commands work with. Effects read {@link #effectiveLevel}. */
 	public static int level(Player player, Talent talent) {
 		return data(player).level(talent);
+	}
+
+	/**
+	 * The level that applies right now: 0 while the talent is toggled off. Every effect reads this one, so a toggle
+	 * works for every talent without each effect knowing about it.
+	 */
+	public static int effectiveLevel(Player player, Talent talent) {
+		return data(player).effectiveLevel(talent);
+	}
+
+	/**
+	 * Creative for the mod's rules: talents are free and tree XP isn't earned. One check everywhere, the same one
+	 * vanilla uses for free items, so the two never disagree.
+	 */
+	public static boolean isCreative(Player player) {
+		return player.hasInfiniteMaterials();
 	}
 
 	/** The rules this side plays by: the server's config on the server, the copy the server sent on the client. */
@@ -65,8 +82,11 @@ public final class Talents {
 	}
 
 	public enum BuyResult {
-		BOUGHT,
+		/** The next level can be bought right now. */
+		BUYABLE,
 		MAXED,
+		/** The talent has no effect yet ({@link Talent#implemented()}), so it isn't for sale. */
+		NOT_YET,
 		LOCKED,
 		NO_POINTS
 	}
@@ -101,20 +121,25 @@ public final class Talents {
 			return BuyResult.MAXED;
 		}
 
+		if (!talent.implemented()) {
+			return BuyResult.NOT_YET;
+		}
+
 		if (!data.isUnlocked(talent)) {
 			return BuyResult.LOCKED;
 		}
 
-		if (!player.hasInfiniteMaterials() && points(player, talent.tree()) <= 0) {
+		if (!isCreative(player) && points(player, talent.tree()) <= 0) {
 			return BuyResult.NO_POINTS;
 		}
 
-		return BuyResult.BOUGHT;
+		return BuyResult.BUYABLE;
 	}
 
 	/**
 	 * Buys the next level of a talent with a point of its tree, if the player can, and tells them how it went. Creative
-	 * players get it for free, like enchanting.
+	 * players get it for free, like enchanting. A rejection means a stale or modified client (the screen only asks for
+	 * what it thinks will work), so it's logged at debug.
 	 */
 	public static BuyResult tryBuy(ServerPlayer player, Talent talent) {
 		BuyResult result = canBuy(player, talent);
@@ -123,78 +148,30 @@ public final class Talents {
 
 		switch (result) {
 			case MAXED -> player.sendOverlayMessage(Component.translatable("message.imsotalented.maxed", name));
+			case NOT_YET -> player.sendOverlayMessage(Component.translatable("message.imsotalented.not_yet", name));
 			case LOCKED -> player.sendOverlayMessage(Component.translatable("message.imsotalented.locked", name, unmetPrereqNames(data, talent)));
 			case NO_POINTS -> player.sendOverlayMessage(Component.translatable("message.imsotalented.no_points",
 					name, treeName(talent.tree()), nextPointLevel(player, talent.tree())));
-			case BOUGHT -> {
+			case BUYABLE -> {
 				int level = data.level(talent) + 1;
 				setLevel(player, talent, level);
 				player.level().playSound(null, player.getX(), player.getY(), player.getZ(), SoundEvents.PLAYER_LEVELUP, SoundSource.PLAYERS, 0.75F, 1.2F);
 				player.sendOverlayMessage(Component.translatable("message.imsotalented.bought", name, level, talent.maxLevel()));
-				ImSoTalented.LOGGER.debug("{} bought {} level {}", player.getName().getString(), talent.id(), level);
+				ImSoTalented.LOGGER.info("{} ({}) bought {} level {}; {} {} points left", player.getName().getString(), player.getUUID(),
+						talent.id(), level, points(player, talent.tree()), talent.tree().id());
 			}
+		}
+
+		if (result != BuyResult.BUYABLE) {
+			ImSoTalented.LOGGER.debug("Rejected buying {} for {} ({}): {}", talent.id(), player.getName().getString(), player.getUUID(), result);
 		}
 
 		return result;
 	}
 
-	/**
-	 * Tree XP from an activity: creative and spectator players earn none, the tree's XP talent adds its share, and
-	 * fractions are carried over per player until they make a whole point (mining gives half a point per block). The
-	 * whole points go through {@link #addXp}.
-	 */
-	public static void earn(ServerPlayer player, TalentTree tree, double amount) {
-		if (!(amount > 0.0) || player.isCreative() || player.isSpectator()) {
-			return;
-		}
-
-		double boosted = amount * TalentValues.treeXpMultiplier(data(player).effectiveLevel(tree.xpTalent()));
-		double[] fractions = player.getAttachedOrCreate(ImSoTalented.TREE_XP_FRACTIONS);
-		double total = fractions[tree.ordinal()] + boosted;
-		long whole = (long) total;
-		fractions[tree.ordinal()] = total - whole;
-
-		if (whole > 0L) {
-			addXp(player, tree, whole);
-		}
-	}
-
-	/**
-	 * Adds whole tree XP, as earned or from a command. A tree at its top level takes no more. Each new level posts a
-	 * chat line (only this player sees it) with the points there are to spend in the tree.
-	 */
-	public static void addXp(ServerPlayer player, TalentTree tree, long amount) {
-		if (amount <= 0L) {
-			return;
-		}
-
-		TalentRules rules = rules(player);
-		long before = treeXp(player, tree);
-		long cap = rules.xpForLevel(tree.maxLevel());
-
-		if (before >= cap) {
-			return;
-		}
-
-		setXp(player, tree, Math.min(cap, before + amount));
-	}
-
-	/** Sets a tree's XP outright (a command, a reset), with the level-up message when it crosses into a new level. */
-	public static void setXp(ServerPlayer player, TalentTree tree, long xp) {
-		TalentRules rules = rules(player);
-		int levelBefore = treeLevel(player, tree);
-		player.setAttached(ImSoTalented.TALENTS, data(player).withXp(tree, Math.max(0L, xp)));
-		int levelAfter = rules.levelFor(treeXp(player, tree), tree.maxLevel());
-
-		if (levelAfter > levelBefore) {
-			player.sendSystemMessage(Component.translatable("message.imsotalented.level_up",
-					treeName(tree), levelAfter, points(player, tree), Component.keybind(TALENT_TREE_KEY)));
-		}
-	}
-
-	/** The tree's name in its own color, for chat and overlay messages. */
-	public static MutableComponent treeName(TalentTree tree) {
-		return Component.translatable(tree.translationKey()).withColor(tree.color() & 0xFFFFFF);
+	/** Whether the player can switch this talent off or on: a toggleable talent that works and that they own. */
+	public static boolean canToggle(Player player, Talent talent) {
+		return talent.toggleable() && talent.implemented() && level(player, talent) >= 1;
 	}
 
 	/** The state of a server-side toggle: the new state, or rejected (the reason is shown as an overlay). */
@@ -205,35 +182,132 @@ public final class Talents {
 	}
 
 	/**
-	 * Toggles a talent off/on, if the player may: the talent must be toggleable, owned (level 1 or more),
-	 * and the player must not be in creative (talents are always on there). Toggling costs nothing, is
-	 * instant and never changes a purchased level or the points spent; it re-applies the effects (off removes
-	 * the attribute modifiers, on re-adds them) and the toggle persists with the player like the levels do.
+	 * Switches a talent on or off, if the player may ({@link #canToggle}), in every game mode. Toggling costs nothing,
+	 * is instant and never changes a bought level or the points spent; it re-applies the effects (off removes the
+	 * attribute modifiers, on re-adds them) and the toggle is saved with the player like the levels are. {@code
+	 * notify} sends the result to the player's action bar; a command handles its own feedback instead.
 	 */
-	public static ToggleResult toggle(ServerPlayer player, Talent talent, boolean on) {
-		if (!talent.toggleable()) {
-			player.sendOverlayMessage(Component.translatable("message.imsotalented.toggle_not_toggleable", Component.translatable(talent.translationKey())));
+	public static ToggleResult toggle(ServerPlayer player, Talent talent, boolean on, boolean notify) {
+		Component name = Component.translatable(talent.translationKey());
+
+		if (!talent.toggleable() || !talent.implemented()) {
+			reject(player, notify, Component.translatable("message.imsotalented.toggle_not_toggleable", name), talent, "not toggleable");
 			return ToggleResult.REJECTED;
 		}
 
 		TalentData data = data(player);
 
 		if (data.level(talent) <= 0) {
-			player.sendOverlayMessage(Component.translatable("message.imsotalented.toggle_not_owned", Component.translatable(talent.translationKey())));
+			reject(player, notify, Component.translatable("message.imsotalented.toggle_not_owned", name), talent, "not owned");
 			return ToggleResult.REJECTED;
 		}
 
-		if (player.hasInfiniteMaterials()) {
-			player.sendOverlayMessage(Component.translatable("message.imsotalented.toggle_creative"));
-			return ToggleResult.REJECTED;
-		}
-
-		ToggleResult result = on ? ToggleResult.ON : ToggleResult.OFF;
 		setData(player, data.withDisabled(talent, !on));
-		player.sendOverlayMessage(Component.translatable(on ? "message.imsotalented.toggled_on" : "message.imsotalented.toggled_off", Component.translatable(talent.translationKey())));
-		ImSoTalented.LOGGER.debug("{} toggled {} {}", player.getName().getString(), talent.id(), on ? "on" : "off");
 
-		return result;
+		if (notify) {
+			player.sendOverlayMessage(Component.translatable(on ? "message.imsotalented.toggled_on" : "message.imsotalented.toggled_off", name));
+		}
+
+		ImSoTalented.LOGGER.debug("{} ({}) toggled {} {}", player.getName().getString(), player.getUUID(), talent.id(), on ? "on" : "off");
+		return on ? ToggleResult.ON : ToggleResult.OFF;
+	}
+
+	private static void reject(ServerPlayer player, boolean notify, Component message, Talent talent, String reason) {
+		if (notify) {
+			player.sendOverlayMessage(message);
+		}
+
+		ImSoTalented.LOGGER.debug("Rejected toggling {} for {} ({}): {}", talent.id(), player.getName().getString(), player.getUUID(), reason);
+	}
+
+	/** The server's tree XP bookkeeping for this player: pending XP, the hourly allowance, the last camera turn. */
+	public static TreeXpLedger ledger(ServerPlayer player) {
+		return player.getAttachedOrCreate(ImSoTalented.TREE_XP_LEDGER);
+	}
+
+	/**
+	 * Tree XP from an activity. Creative and spectator players earn none, and neither does a player who hasn't turned
+	 * the camera for {@link TalentValues#AFK_TICKS} (a held key, a fishing farm). The tree's XP talent adds its share,
+	 * and past the tree's hourly allowance only {@link TalentValues#TREE_XP_OVER_CAP_SHARE} of it counts. The result
+	 * waits in the player's {@link TreeXpLedger} and is committed once per tick by {@link #commitPending}, so a quarry
+	 * that breaks a whole vein sends one update, not one per ore.
+	 */
+	public static void earn(ServerPlayer player, TalentTree tree, double amount) {
+		if (!(amount > 0.0) || isCreative(player) || player.isSpectator()) {
+			return;
+		}
+
+		TreeXpLedger ledger = ledger(player);
+		long tick = player.level().getServer().getTickCount();
+
+		if (ledger.idle(tick)) {
+			return;
+		}
+
+		ledger.credit(tree, amount * TalentValues.treeXpMultiplier(effectiveLevel(player, tree.xpTalent())), tick);
+	}
+
+	/**
+	 * Once per player per server tick: notes where the player looks (the AFK check) and commits the whole points
+	 * earned since the last tick, keeping fractions for later.
+	 */
+	public static void commitPending(ServerPlayer player) {
+		TreeXpLedger ledger = ledger(player);
+		ledger.look(player.getYRot(), player.getXRot(), player.level().getServer().getTickCount());
+
+		for (TalentTree tree : TalentTree.values()) {
+			long whole = ledger.takeWhole(tree);
+
+			if (whole > 0L) {
+				addXp(player, tree, whole);
+			}
+		}
+	}
+
+	/**
+	 * Adds whole tree XP, as earned or from a command, and says how much went in. A tree at its top level takes no
+	 * more, and an addition past the top stops there (it never wraps around, however large).
+	 */
+	public static long addXp(ServerPlayer player, TalentTree tree, long amount) {
+		if (amount <= 0L) {
+			return 0L;
+		}
+
+		long before = treeXp(player, tree);
+		long cap = rules(player).xpForLevel(tree.maxLevel());
+
+		if (before >= cap) {
+			return 0L;
+		}
+
+		long after = amount >= cap - before ? cap : before + amount;
+		setXp(player, tree, after);
+		return after - before;
+	}
+
+	/**
+	 * Sets a tree's XP outright (a command, a reset). Each new level posts a chat line (only this player sees it) with
+	 * the points to spend, plays the level-up sound and is logged; the top level says the tree earns no more.
+	 */
+	public static void setXp(ServerPlayer player, TalentTree tree, long xp) {
+		TalentRules rules = rules(player);
+		int levelBefore = treeLevel(player, tree);
+		player.setAttached(ImSoTalented.TALENTS, data(player).withXp(tree, Math.max(0L, xp)));
+		int levelAfter = rules.levelFor(treeXp(player, tree), tree.maxLevel());
+
+		if (levelAfter > levelBefore) {
+			boolean top = levelAfter >= tree.maxLevel();
+			player.sendSystemMessage(Component.translatable(top ? "message.imsotalented.level_up_top" : "message.imsotalented.level_up",
+					treeName(tree), levelAfter, points(player, tree), Component.keybind(TALENT_TREE_KEY)));
+			player.level().playSound(null, player.getX(), player.getY(), player.getZ(), SoundEvents.PLAYER_LEVELUP, SoundSource.PLAYERS, 0.5F, 1.0F);
+			ImSoTalented.LOGGER.info("{} ({}) reached {} level {}{}", player.getName().getString(), player.getUUID(), tree.id(), levelAfter,
+					top ? " (top level)" : "");
+		}
+	}
+
+	/** The tree's name in its own color, for chat and overlay messages. */
+	public static MutableComponent treeName(TalentTree tree) {
+		return Component.translatable(tree.translationKey()).withColor(tree.color() & 0xFFFFFF);
 	}
 
 	/** Sets a talent's level (no points involved) and applies what changed. */

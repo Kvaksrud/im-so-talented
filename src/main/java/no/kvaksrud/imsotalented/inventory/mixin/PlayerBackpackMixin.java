@@ -11,7 +11,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.gamerules.GameRules;
 
 @Mixin(Player.class)
-public abstract class PlayerMixin {
+public abstract class PlayerBackpackMixin {
 	/**
 	 * Right after the inventory drops on death, the backpack drops the same way, under the same rule: with
 	 * keepInventory on it stays, and copy-on-death carries it to the respawned player.

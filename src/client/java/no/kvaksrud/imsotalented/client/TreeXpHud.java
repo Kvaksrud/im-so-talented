@@ -3,6 +3,7 @@ package no.kvaksrud.imsotalented.client;
 import java.nio.file.Path;
 
 import no.kvaksrud.imsotalented.ImSoTalented;
+import no.kvaksrud.imsotalented.client.talent.TalentTreeLayout;
 import no.kvaksrud.imsotalented.client.talent.TreeXpBar;
 import no.kvaksrud.imsotalented.talent.TalentData;
 import no.kvaksrud.imsotalented.talent.TalentRules;
@@ -40,16 +41,16 @@ import net.fabricmc.loader.api.FabricLoader;
  * place), so Fabric moves the health, armor, food, air and mount health rows up by its height; the held item name and
  * the action bar text go up with them ({@link #liftedOverStrip}). The vanilla XP level number stays where it is, in
  * the strip's lower part. It's reserved whenever the game mode has an XP bar, even while the slot is empty, so the
- * rows never jump when a bar appears; in creative and spectator it takes no room and shows nothing, like the XP bar.
+ * rows never jump when a bar appears; in creative and spectator it takes no room and shows nothing, like the XP bar,
+ * and neither does it on a server without the mod ({@link ImSoTalentedClient#serverHasMod}).
  */
 public final class TreeXpHud {
 	public static final Identifier ID = ImSoTalented.id("tree_xp_bar");
 	/**
-	 * The strip reserved above the vanilla XP bar: the bar at its top, a pixel of air, and seven rows for the vanilla
-	 * XP level number, which stands up out of the XP bar's middle and isn't moved.
+	 * The strip reserved above the vanilla XP bar (13 px): the bar at its top, a pixel of air, and the rows of the
+	 * vanilla XP level number's digits, which stand up out of the XP bar's middle and aren't moved.
 	 */
-	public static final int SLOT_HEIGHT = 13;
-	public static final int BAR_WIDTH = 182;
+	public static final int SLOT_HEIGHT = TreeXpBar.HEIGHT + 1 + TalentTreeLayout.CAP_HEIGHT;
 	/** How long the bar of a tree that just earned XP shows: three seconds. */
 	public static final int FLASH_TICKS = 60;
 	/**
@@ -59,8 +60,8 @@ public final class TreeXpHud {
 	private static final int SYNC_GRACE_TICKS = 20;
 	/** Between the bar's right end and its label. */
 	private static final int LABEL_GAP = 4;
-	/** Capital letters are 7 px tall, so this puts them in the middle of the 5 px bar. */
-	private static final int LABEL_Y_OFFSET = (TreeXpBar.HEIGHT - 7) / 2;
+	/** Puts the label's capital letters in the middle of the bar. */
+	private static final int LABEL_Y_OFFSET = (TreeXpBar.HEIGHT - TalentTreeLayout.CAP_HEIGHT) / 2;
 	/** The vanilla XP level number's black outline. */
 	private static final int LABEL_OUTLINE = 0xFF000000;
 	/** The held item's name is drawn this far above the screen's bottom; the action bar text 9 px above that. */
@@ -87,7 +88,7 @@ public final class TreeXpHud {
 		HudElementRegistry.replaceElement(VanillaHudElements.HELD_ITEM_TOOLTIP, TreeXpHud::liftedOverStrip);
 		HudElementRegistry.replaceElement(VanillaHudElements.OVERLAY_MESSAGE, TreeXpHud::liftedOverStrip);
 
-		ClientTickEvents.END_CLIENT_TICK.register(TreeXpHud::tick);
+		ClientTickEvents.END_CLIENT_TICK.register(TreeXpHud::watchEarnings);
 	}
 
 	/**
@@ -152,13 +153,17 @@ public final class TreeXpHud {
 		return FabricLoader.getInstance().getConfigDir().resolve(ImSoTalentedClientConfig.FILE_NAME);
 	}
 
-	/** Whether the game mode shows the vanilla XP bar (survival and adventure), which is when the slot takes room. */
+	/**
+	 * Whether the slot takes room: on a server with the mod, in a game mode that shows the vanilla XP bar (survival and
+	 * adventure).
+	 */
 	private static boolean reservesSlot() {
 		Minecraft minecraft = Minecraft.getInstance();
-		return minecraft.gameMode != null && minecraft.gameMode.hasExperience();
+		return ImSoTalentedClient.serverHasMod() && minecraft.gameMode != null && minecraft.gameMode.hasExperience();
 	}
 
-	private static void tick(Minecraft client) {
+	/** Spots a tree that just earned XP by comparing the synced tree XP with the last tick's, and shows its bar for a while. */
+	private static void watchEarnings(Minecraft client) {
 		LocalPlayer player = client.player;
 
 		if (player == null) {
@@ -234,16 +239,16 @@ public final class TreeXpHud {
 		}
 
 		int top = graphics.guiHeight() - HudStatusBarHeightRegistry.getHeight(ID);
-		int left = (graphics.guiWidth() - BAR_WIDTH) / 2;
+		int left = (graphics.guiWidth() - TreeXpBar.FULL_WIDTH) / 2;
 		TalentRules.Progress progress = Talents.progress(minecraft.player, tree);
-		TreeXpBar.extract(graphics, left, top, BAR_WIDTH, progress.fraction(), tree.color());
+		TreeXpBar.extract(graphics, left, top, TreeXpBar.FULL_WIDTH, progress.fraction(), tree.color());
 
 		Component name = Component.translatable(tree.translationKey());
 		Component label = progress.maxed()
 				? Component.translatable("hud.imsotalented.bar_maxed", name)
 				: Component.translatable("hud.imsotalented.bar", name, progress.level());
 		Font font = minecraft.font;
-		int labelX = left + BAR_WIDTH + LABEL_GAP;
+		int labelX = left + TreeXpBar.FULL_WIDTH + LABEL_GAP;
 
 		// Right of the bar: the status rows stay inside the bar's width, and the chat grows from the left edge, so on
 		// the left the label would run under the chat's last line. A window too narrow for the label still gets the bar.

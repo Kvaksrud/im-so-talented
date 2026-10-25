@@ -6,6 +6,9 @@ import java.util.Map;
 import java.util.stream.LongStream;
 
 import com.mojang.serialization.Codec;
+import no.kvaksrud.imsotalented.ImSoTalented;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
@@ -32,6 +35,8 @@ public final class VisitedChunks {
 	static final int WORDS = (1 << (2 * REGION_SHIFT)) / Long.SIZE;
 	/** Longs per saved region: its key, then its bitmap. */
 	static final int ENTRY = 1 + WORDS;
+	/** The mod's log, by name: {@code ImSoTalented} itself creates attachments when it loads, which the unit tests can't. */
+	private static final Logger LOGGER = LoggerFactory.getLogger(ImSoTalented.MOD_ID);
 
 	public static final Codec<VisitedChunks> CODEC = Codec.unboundedMap(Codec.STRING,
 					Codec.LONG_STREAM.xmap(LongStream::toArray, Arrays::stream))
@@ -148,6 +153,11 @@ public final class VisitedChunks {
 		for (Map.Entry<String, long[]> dimension : saved.entrySet()) {
 			long[] in = dimension.getValue();
 			Long2ObjectOpenHashMap<long[]> regions = new Long2ObjectOpenHashMap<>();
+
+			if (in.length % ENTRY != 0) {
+				LOGGER.debug("Dropped the last {} of {} longs of visited chunks in {}: not a whole region", in.length % ENTRY,
+						in.length, dimension.getKey());
+			}
 
 			for (int start = 0; start + ENTRY <= in.length; start += ENTRY) {
 				long[] bits = regions.get(in[start]);

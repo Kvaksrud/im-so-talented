@@ -123,7 +123,39 @@ class QuarryingTest {
 	}
 
 	@Test
-	void theCapIsFarAboveAnyVanillaOreBlob() {
-		assertTrue(TalentValues.QUARRY_MAX_BLOCKS >= 64, "coal blobs reach a few dozen ores");
+	void oneBreakTakesAtMost256Blocks() {
+		assertEquals(256, TalentValues.QUARRY_MAX_BLOCKS, "the first ore and 255 more");
+
+		// A 300-ore blob (10 x 6 x 5) mined at the top level: the first ore and its 255 nearest neighbours go.
+		Set<BlockPos> blob = new HashSet<>();
+
+		for (BlockPos pos : BlockPos.betweenClosed(ORE, ORE.offset(9, 5, 4))) {
+			blob.add(pos.immutable());
+		}
+
+		assertEquals(300, blob.size());
+		BoundingBox anywhere = Quarrying.reach(ORE, Talent.QUARRYING.maxLevel(), EYE);
+		List<BlockPos> vein = Quarrying.vein(ORE, blob::contains, anywhere, TalentValues.QUARRY_MAX_BLOCKS - 1);
+		assertEquals(255, vein.size());
+		assertEquals(255, new HashSet<>(vein).size(), "no block twice");
+		assertFalse(vein.contains(ORE), "the first ore isn't among its neighbours");
+		assertTrue(blob.containsAll(vein));
+
+		// The quarry looks one block further to tell a capped vein from one that ends right there.
+		assertEquals(256, Quarrying.vein(ORE, blob::contains, anywhere, TalentValues.QUARRY_MAX_BLOCKS).size());
+		assertEquals(299, Quarrying.vein(ORE, blob::contains, anywhere, 1000).size(), "uncapped it would take the whole blob");
+	}
+
+	@Test
+	void theNearestBlocksGoFirstWhenTheCapCutsAVeinShort() {
+		Set<BlockPos> line = new HashSet<>();
+
+		for (int x = 0; x < 300; x++) {
+			line.add(ORE.east(x));
+		}
+
+		List<BlockPos> vein = Quarrying.vein(ORE, line::contains, BoundingBox.infinite(), TalentValues.QUARRY_MAX_BLOCKS - 1);
+		assertEquals(ORE.east(), vein.getFirst());
+		assertEquals(ORE.east(255), vein.getLast(), "the 255 nearest, in order");
 	}
 }

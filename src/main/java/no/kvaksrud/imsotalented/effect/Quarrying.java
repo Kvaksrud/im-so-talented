@@ -14,18 +14,16 @@ import no.kvaksrud.imsotalented.talent.Talents;
 import org.jspecify.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 import net.fabricmc.fabric.api.tag.convention.v2.ConventionalBlockTags;
@@ -35,14 +33,18 @@ import net.fabricmc.fabric.api.tag.convention.v2.ConventionalBlockTags;
  * to it as well, each block as if the player had mined it: its drops (Fortune and More Luck included), the tool's wear
  * (Unbreaking and Careful Hands included), Gatherer XP, stats and hunger. Each level reaches further, from a 3x3x3 cube
  * around the ore at level 1 to the whole vein at the top level ({@link TalentValues#quarryCubeSize}). Every drop of the
- * break, the first ore's too, lands in front of the player.
+ * break, the first ore's too, lands at the player's feet, not out by the vein where it could fall into lava or down a
+ * ravine.
  *
  * <ul>
  * <li>"The same kind" is the same block, or one that shares a {@code c:ores/<kind>} tag with it, so iron ore and
  *     deepslate iron ore go together. Only ores ({@code c:ores}) start a quarry, and stone around them is left.</li>
  * <li>Only with a tool that gets the ore's drops, and every block still has to be one the tool can mine.</li>
- * <li>It stops with 1 durability left, so a tool (an enchanted pickaxe above all) never breaks from quarrying.
- *     Switching tools, spawn protection and other mods' break checks stop or skip blocks as for any break.</li>
+ * <li>It stops with 1 durability left, so a tool (an enchanted pickaxe above all) never breaks from quarrying, and
+ *     at {@link TalentValues#QUARRY_MAX_BLOCKS}; either way the player is told on the action bar. Switching tools,
+ *     spawn protection and other mods' break checks stop or skip blocks as for any break.</li>
+ * <li>Ore in a chunk that isn't loaded counts as not ore: the search never loads or generates a chunk on the server
+ *     thread, and never breaks a block in one.</li>
  * </ul>
  *
  * <p>All server side: the client already sends the sneak key with its movement input. The wrap of
@@ -50,15 +52,11 @@ import net.fabricmc.fabric.api.tag.convention.v2.ConventionalBlockTags;
  * {@link #destroyBlock}, and {@code BlockMixin} moves the drops through {@link #gather}.
  */
 public final class Quarrying {
-	/** How far in front of the player's eyes the drops land, if nothing is in the way. */
-	private static final double DROP_DISTANCE = 1.0;
-	/** How far back from a block in the way, so the drops don't land inside it. */
-	private static final double DROP_WALL_GAP = 0.3;
 	private static final String ORE_KIND_PREFIX = "ores/";
 
 	/** While a quarry runs: the blocks its own breaks hand back through {@link #destroyBlock} are plain breaks. */
 	private static boolean quarrying;
-	/** Where the running quarry's drops go, and in which level; null when none runs. */
+	/** Where the running quarry's drops go (the player's feet when it started), and in which level; null when none runs. */
 	private static @Nullable Level dropLevel;
 	private static @Nullable Vec3 dropPoint;
 
@@ -153,7 +151,7 @@ public final class Quarrying {
 	 * @param destroy the wrapped vanilla break, Fabric's break events included
 	 */
 	public static boolean destroyBlock(ServerPlayer player, BlockPos pos, Breaker destroy) {
-		int level = Talents.level(player, Talent.QUARRYING);
+		int level = Talents.effectiveLevel(player, Talent.QUARRYING);
 
 		if (quarrying || level <= 0 || !player.isShiftKeyDown()) {
 			return destroy.destroy(pos);
@@ -168,12 +166,19 @@ public final class Quarrying {
 		}
 
 		Set<TagKey<Block>> kinds = oreKinds(ore);
-		List<BlockPos> vein = vein(pos, other -> isSameOre(world.getBlockState(other), ore, kinds),
-				reach(pos, level, player.getEyePosition()), TalentValues.QUARRY_MAX_BLOCKS - 1);
+		// One block past the cap, to tell a vein the cap cut short from one that ends right there.
+		int max = TalentValues.QUARRY_MAX_BLOCKS - 1;
+		List<BlockPos> vein = vein(pos, other -> world.isLoaded(other) && isSameOre(world.getBlockState(other), ore, kinds),
+				reach(pos, level, player.getEyePosition()), max + 1);
+		boolean capped = vein.size() > max;
+
+		if (capped) {
+			vein.removeLast();
+		}
 
 		quarrying = true;
 		dropLevel = world;
-		dropPoint = dropPoint(player);
+		dropPoint = player.position();
 
 		try {
 			if (!destroy.destroy(pos)) {
@@ -183,18 +188,30 @@ public final class Quarrying {
 			for (BlockPos next : vein) {
 				ItemStack held = player.getMainHandItem();
 
-				// The tool broke, ran down to its last point, or the player switched to something else.
-				if (held != tool || held.isEmpty() || !canWear(held.getMaxDamage(), held.getDamageValue())) {
-					break;
+				// The player switched to something else, or the tool is gone: nothing to say, they know.
+				if (held != tool || held.isEmpty()) {
+					return true;
 				}
 
-				BlockState state = world.getBlockState(next);
-
-				// Something changed it since the search (a block update), or it's a kind the tool can't mine (nether
-				// gold ore and gold ore share a tag), or the player may not build there (spawn protection).
-				if (isSameOre(state, ore, kinds) && held.isCorrectToolForDrops(state) && world.mayInteract(player, next)) {
-					player.gameMode.destroyBlock(next);
+				if (!canWear(held.getMaxDamage(), held.getDamageValue())) {
+					player.sendOverlayMessage(Component.translatable("message.imsotalented.quarry_stopped_tool", held.getHoverName()));
+					return true;
 				}
+
+				// Skipped: a block in a chunk that unloaded since the search, one something changed since (a block
+				// update), a kind the tool can't mine (nether gold ore and gold ore share a tag), or one where the player
+				// may not build (spawn protection).
+				if (world.isLoaded(next)) {
+					BlockState state = world.getBlockState(next);
+
+					if (isSameOre(state, ore, kinds) && held.isCorrectToolForDrops(state) && world.mayInteract(player, next)) {
+						player.gameMode.destroyBlock(next);
+					}
+				}
+			}
+
+			if (capped) {
+				player.sendOverlayMessage(Component.translatable("message.imsotalented.quarry_stopped_cap", TalentValues.QUARRY_MAX_BLOCKS));
 			}
 
 			return true;
@@ -206,14 +223,14 @@ public final class Quarrying {
 	}
 
 	/**
-	 * From {@code BlockMixin}: moves an item a block drops in this level to the running quarry's drop point, standing
-	 * still so it falls straight down there. Does nothing when no quarry runs.
+	 * From {@code BlockMixin}: moves an item a block drops in this level to the running quarry's drop point, the
+	 * player's feet, standing still so it stays there. Does nothing when no quarry runs.
 	 */
 	public static void gather(Level level, Entity drop) {
 		Vec3 point = gatherPoint(level);
 
 		if (point != null) {
-			drop.setPos(point.x, point.y - drop.getBbHeight() / 2.0, point.z);
+			drop.setPos(point.x, point.y, point.z);
 			drop.setDeltaMovement(Vec3.ZERO);
 		}
 	}
@@ -226,21 +243,6 @@ public final class Quarrying {
 
 	private static @Nullable Vec3 gatherPoint(Level level) {
 		return quarrying && level == dropLevel ? dropPoint : null;
-	}
-
-	/** A block in front of the player's eyes, or a little short of the first block in the way. */
-	private static Vec3 dropPoint(ServerPlayer player) {
-		Vec3 eye = player.getEyePosition();
-		Vec3 look = player.getLookAngle();
-		Vec3 ahead = eye.add(look.scale(DROP_DISTANCE));
-		BlockHitResult hit = player.level().clip(new ClipContext(eye, ahead, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
-
-		if (hit.getType() == HitResult.Type.MISS) {
-			return ahead;
-		}
-
-		double distance = Math.max(0.0, hit.getLocation().distanceTo(eye) - DROP_WALL_GAP);
-		return eye.add(look.scale(distance));
 	}
 
 	/** The ore's {@code c:ores/<kind>} tags: iron ore's is {@code c:ores/iron}, which deepslate iron ore shares. */

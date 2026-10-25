@@ -1,0 +1,97 @@
+# Builds every push and pull request and runs the unit tests. On main (and mc/<minecraft version> branches, should
+# older Minecraft versions get their own), publishes a GitHub release with the mod jar the first time a mod_version
+# is seen, as soon as CHANGELOG.md has a "## <mod_version>" section that isn't marked "(unreleased)". To release:
+# bump mod_version in gradle.properties, give the version its CHANGELOG section, and push.
+
+name: build
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v6
+      - name: validate gradle wrapper
+        uses: gradle/actions/wrapper-validation@v6
+      - name: read java version
+        id: props
+        run: echo "java=$(grep '^java_version=' gradle.properties | cut -d= -f2-)" >> "$GITHUB_OUTPUT"
+      - name: setup jdk
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ steps.props.outputs.java }}
+          distribution: 'microsoft'
+      - name: make gradle wrapper executable
+        run: chmod +x ./gradlew
+      # A fresh checkout and a clean build, so a released jar never carries classes left over from an earlier build.
+      - name: build
+        run: ./gradlew clean build
+      - name: capture build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: Artifacts
+          path: build/libs/
+
+      - name: publish release
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/mc/'))
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prop() { grep "^$1=" gradle.properties | cut -d= -f2-; }
+          MOD_VERSION=$(prop mod_version)
+          MC_VERSION=$(prop minecraft_version)
+          JAVA_VERSION=$(prop java_version)
+          TAG="v${MOD_VERSION}+mc${MC_VERSION}"
+
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "$TAG is already released. Bump mod_version in gradle.properties to publish a new release."
+            exit 0
+          fi
+
+          # This version's section of CHANGELOG.md: "## 0.2.0" once it's ready, "## 0.2.0 (unreleased)" while it isn't.
+          HEADING=$(awk -v version="$MOD_VERSION" '$1 == "##" && $2 == version {print; exit}' CHANGELOG.md)
+          if [ -z "$HEADING" ]; then
+            echo "CHANGELOG.md has no section for ${MOD_VERSION}. Add \"## ${MOD_VERSION}\" with its changes to publish it."
+            exit 0
+          fi
+          if [[ "$HEADING" == *"(unreleased)"* ]]; then
+            echo "CHANGELOG.md still marks ${MOD_VERSION} as unreleased. Rename its heading to \"## ${MOD_VERSION}\" to publish it."
+            exit 0
+          fi
+
+          JAR=$(ls build/libs/*.jar | grep -v -- '-sources\.jar$')
+
+          # "Latest" goes to the newest Minecraft version, not whichever branch happened to release last.
+          NEWEST_MC=$( (gh release list --limit 200 --json tagName --jq '.[].tagName' | sed -n 's/.*+mc//p'; echo "$MC_VERSION") | sort -V | tail -1)
+          LATEST=$([ "$NEWEST_MC" = "$MC_VERSION" ] && echo true || echo false)
+
+          cat > notes.md <<EOF
+          I'm So Talented **${MOD_VERSION}** for **Minecraft ${MC_VERSION}** (Fabric).
+
+          | Requirement | Version |
+          |---|---|
+          | Minecraft | ${MC_VERSION} |
+          | Fabric Loader | $(prop loader_version) or newer |
+          | Fabric API | $(prop fabric_api_version) or newer |
+          | Java | ${JAVA_VERSION} |
+
+          **Install:** put \`$(basename "$JAR")\` and Fabric API in your \`mods\` folder, on the server and on every player's client.
+          EOF
+
+          # What changed: this version's section of CHANGELOG.md.
+          CHANGES=$(awk -v version="$MOD_VERSION" '$1 == "##" && $2 == version {found = 1; next} found && /^## / {exit} found' CHANGELOG.md)
+          if [ -n "$CHANGES" ]; then
+            printf '\n## Changes\n%s\n' "$CHANGES" >> notes.md
+          fi
+
+          gh release create "$TAG" "$JAR" \
+            --target "$GITHUB_SHA" \
+            --latest="$LATEST" \
+            --title "I'm So Talented ${MOD_VERSION} (Minecraft ${MC_VERSION}, Fabric)" \
+            --notes-file notes.md

@@ -1,10 +1,14 @@
 package no.kvaksrud.imsotalented.talent;
 
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.IntFunction;
 
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.util.ByIdMap;
 
 import io.netty.buffer.ByteBuf;
 
@@ -23,11 +27,20 @@ import io.netty.buffer.ByteBuf;
 public record TalentRules(int costBase, double costGrowth, EnchantmentStacking stacking) {
 	public static final TalentRules DEFAULTS = new TalentRules(25, 1.18, EnchantmentStacking.HIGHEST);
 
+	/** An id from a newer or broken server reads as the first rule instead of failing the whole packet. */
+	private static final IntFunction<EnchantmentStacking> STACKING_BY_ID = ByIdMap.continuous(
+			EnchantmentStacking::ordinal, EnchantmentStacking.values(), ByIdMap.OutOfBoundsStrategy.ZERO);
+
 	public static final StreamCodec<ByteBuf, TalentRules> STREAM_CODEC = StreamCodec.composite(
 			ByteBufCodecs.VAR_INT, TalentRules::costBase,
 			ByteBufCodecs.DOUBLE, TalentRules::costGrowth,
-			ByteBufCodecs.idMapper(i -> EnchantmentStacking.values()[i], EnchantmentStacking::ordinal), TalentRules::stacking,
+			ByteBufCodecs.idMapper(STACKING_BY_ID, EnchantmentStacking::ordinal), TalentRules::stacking,
 			TalentRules::new);
+
+	/** Levels whose XP thresholds are worked out once per set of rules; far more than any tree has. */
+	private static final int CACHED_LEVELS = 128;
+	/** The XP each level starts at, per set of rules: the screen and the HUD ask every frame. */
+	private static final Map<TalentRules, long[]> THRESHOLDS = new ConcurrentHashMap<>();
 
 	/**
 	 * Tree XP to go from tree level {@code level} to the next: {@code ceil(costBase * costGrowth^level)}, so the first
@@ -56,7 +69,21 @@ public record TalentRules(int costBase, double costGrowth, EnchantmentStacking s
 
 	/** Tree XP it takes to reach this level from level 0. */
 	public long xpForLevel(int level) {
-		return this.totalCost(0, Math.max(0, level));
+		int clamped = Math.max(0, level);
+		return clamped <= CACHED_LEVELS ? this.thresholds()[clamped] : this.totalCost(0, clamped);
+	}
+
+	/** {@code thresholds()[n]} is the XP level n starts at, for n up to {@link #CACHED_LEVELS}. */
+	private long[] thresholds() {
+		return THRESHOLDS.computeIfAbsent(this, rules -> {
+			long[] thresholds = new long[CACHED_LEVELS + 1];
+
+			for (int level = 0; level < CACHED_LEVELS; level++) {
+				thresholds[level + 1] = thresholds[level] + rules.cost(level);
+			}
+
+			return thresholds;
+		});
 	}
 
 	/**
@@ -65,15 +92,8 @@ public record TalentRules(int costBase, double costGrowth, EnchantmentStacking s
 	 */
 	public int levelFor(long xp, int maxLevel) {
 		int level = 0;
-		long needed = 0L;
 
-		while (level < maxLevel) {
-			needed += this.cost(level);
-
-			if (needed > xp) {
-				break;
-			}
-
+		while (level < maxLevel && this.xpForLevel(level + 1) <= xp) {
 			level++;
 		}
 

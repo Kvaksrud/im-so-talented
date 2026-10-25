@@ -53,9 +53,20 @@ class TalentValuesTest {
 		assertEquals(10.0, TalentValues.fireResistDuration(1), 1e-9);
 		assertEquals(30.0, TalentValues.fireResistDuration(Talent.FIRE_RESISTANCE.maxLevel()), 1e-9, "10 / 20 / 30 seconds");
 		assertEquals(0.4, TalentValues.glideMaxFall(Talent.GLIDING.maxLevel()), 1e-9, "0.4 blocks/tick at the top level");
-		assertEquals(1.0, TalentValues.glideMaxFall(0), 1e-9, "vanilla fall speed without the talent");
+		assertEquals(0.8, TalentValues.glideMaxFall(1), 1e-9);
+		assertEquals(Double.POSITIVE_INFINITY, TalentValues.glideMaxFall(0), "no cap without the talent: vanilla falls at up to about 3.9");
+		assertEquals("\u221e", TalentValues.effectArgs(Talent.GLIDING, 0)[0], "an uncapped fall formats instead of throwing");
 		assertEquals(1.25, TalentValues.flightSpeedMultiplier(Talent.FLIGHT_SPEED.maxLevel()), 1e-9, "+25% at the top level");
 		assertEquals(1, Talent.NIGHT_VISION.maxLevel(), "one level, switched with the toggle");
+	}
+
+	@Test
+	void vanillasNumbers() {
+		assertEquals(0.42, TalentValues.BASE_JUMP_STRENGTH);
+		assertEquals(0.6, TalentValues.BASE_STEP_HEIGHT);
+		assertEquals(0.08, TalentValues.GRAVITY);
+		assertEquals(0.98, TalentValues.AIR_DRAG);
+		assertEquals(1.0, TalentValues.BASE_STEP_HEIGHT + TalentValues.stepBonus(Talent.STEP_ASSIST.maxLevel()), 1e-9, "Step Assist climbs full blocks");
 	}
 
 	@Test
@@ -75,7 +86,8 @@ class TalentValuesTest {
 			assertTrue(lang.has(talent.descriptionKey()), "no description for " + talent.id());
 			assertTrue(lang.has(talent.effectKey()), "no effect text for " + talent.id());
 
-			for (int level = 0; level <= talent.maxLevel(); level++) {
+			// The tree shows the effect from level 1 (the next level's, before anything is bought) to the top.
+			for (int level = 1; level <= talent.maxLevel(); level++) {
 				String key = TalentValues.effectKey(talent, level);
 				assertTrue(lang.has(key), "no effect text " + key);
 				assertEquals(placeholders(lang.get(key).getAsString()), TalentValues.effectArgs(talent, level).length, talent.id() + " at level " + level);

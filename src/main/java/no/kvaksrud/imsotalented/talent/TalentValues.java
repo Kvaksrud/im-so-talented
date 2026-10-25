@@ -60,6 +60,12 @@ public final class TalentValues {
 	 * a tenth of an ore. Blocks for other tools, like sand, dirt and logs, pay nothing.
 	 */
 	public static final double GATHERER_XP_PER_BLOCK = GATHERER_XP_PER_ORE / 10.0;
+	/**
+	 * A player earns {@link #GATHERER_XP_PER_BLOCK} for at most one block in this many ticks. Blocks that break in one
+	 * hit (netherrack with a good pickaxe, stone under Haste II) skip vanilla's 5-tick mining delay, so sweeping the
+	 * crosshair would otherwise pay every tick. Ores always pay.
+	 */
+	public static final int GATHERER_BLOCK_XP_MIN_TICKS = 10;
 	/** Gatherer XP per mature crop harvested (the seven Bountiful Harvest crops). */
 	public static final double GATHERER_XP_PER_CROP = 1.0;
 	/** Gatherer XP per fish (or other catch) reeled in. */
@@ -84,8 +90,28 @@ public final class TalentValues {
 	 */
 	public static final int QUARRY_MAX_BLOCKS = 256;
 
+	/**
+	 * Each tree earns this much XP an hour at the full rate (twice the roughly 1,500 an hour the activity rates aim
+	 * at); past it, activity pays {@link #TREE_XP_OVER_CAP_SHARE} of the rate until the hour is up. Farms (mob
+	 * grinders, crop fields, elytra flights through new chunks) can't max a tree in an afternoon.
+	 */
+	public static final double TREE_XP_FULL_RATE_PER_HOUR = 3000.0;
+	public static final double TREE_XP_OVER_CAP_SHARE = 0.1;
+	/** One hour in server ticks: the window {@link #TREE_XP_FULL_RATE_PER_HOUR} counts over. */
+	public static final long TREE_XP_WINDOW_TICKS = 72_000L;
+	/**
+	 * A player who hasn't turned the camera for this many ticks (5 minutes) earns no tree XP: a held key, a fishing
+	 * farm or an auto-clicker never turns it, someone playing always does.
+	 */
+	public static final long AFK_TICKS = 6_000L;
+
 	/** Vanilla jump strength, used to show how high a jump gets. */
 	public static final double BASE_JUMP_STRENGTH = 0.42;
+	/** Vanilla step height: what a player climbs without jumping. */
+	public static final double BASE_STEP_HEIGHT = 0.6;
+	/** Vanilla's per-tick fall acceleration and air drag for a player. */
+	public static final double GRAVITY = 0.08;
+	public static final double AIR_DRAG = 0.98;
 
 	private TalentValues() {
 	}
@@ -174,14 +200,14 @@ public final class TalentValues {
 		return JUMP_STRENGTH_PER_LEVEL * level;
 	}
 
-	/** Roughly how many blocks high a jump goes, simulating vanilla's per-tick gravity (0.08) and drag (0.98). */
+	/** Roughly how many blocks high a jump goes, simulating vanilla's per-tick {@link #GRAVITY} and {@link #AIR_DRAG}. */
 	public static double jumpHeight(double jumpStrength) {
 		double height = 0.0;
 		double velocity = jumpStrength;
 
 		while (velocity > 0.0) {
 			height += velocity;
-			velocity = (velocity - 0.08) * 0.98;
+			velocity = (velocity - GRAVITY) * AIR_DRAG;
 		}
 
 		return height;
@@ -252,9 +278,12 @@ public final class TalentValues {
 		return SWIM_SPEED_BONUS_PER_LEVEL * level;
 	}
 
-	/** The max fall speed while gliding (blocks/tick): 1.0 vanilla, 0.4 at the top level. */
+	/**
+	 * The fastest a gliding player falls, in blocks per tick: no cap without the talent (vanilla falls at up to about
+	 * 3.9), then 0.8, 0.6 and 0.4 at the top level.
+	 */
 	public static double glideMaxFall(int level) {
-		return 1.0 - GLIDE_FALL_REDUCTION_PER_LEVEL * level;
+		return level <= 0 ? Double.POSITIVE_INFINITY : 1.0 - GLIDE_FALL_REDUCTION_PER_LEVEL * level;
 	}
 
 	/** Gliding and flight speed are multiplied by this: 1.0 without the talent, 1.25 at the top level. */
@@ -290,7 +319,7 @@ public final class TalentValues {
 			case FASTER_RUNNING -> new Object[] {percent(speedBonus(level))};
 			case HIGHER_JUMPING -> new Object[] {number(jumpHeight(BASE_JUMP_STRENGTH + jumpStrengthBonus(level)))};
 			case SAFE_FALLING -> new Object[] {number(extraSafeFall(level)), percent(fallDamageReduction(level))};
-			case STEP_ASSIST -> new Object[] {number(0.6 + stepBonus(level))};
+			case STEP_ASSIST -> new Object[] {number(BASE_STEP_HEIGHT + stepBonus(level))};
 			case REACH -> new Object[] {number(reachBonus(level)), number(entityReachBonus(level))};
 			case BOUNTIFUL_HARVEST -> new Object[] {harvestBonus(level)};
 			case FAST_GROWTH -> new Object[] {number(growthMultiplier(level))};
@@ -324,6 +353,11 @@ public final class TalentValues {
 
 	/** Like {@link #number}, with more decimals, for small numbers like 0.05 that one decimal rounds away. */
 	public static String number(double value, int decimals) {
+		// BigDecimal can't hold infinity, and some values have no limit (Gliding at level 0 doesn't cap falling).
+		if (Double.isInfinite(value)) {
+			return value > 0 ? "\u221e" : "-\u221e";
+		}
+
 		return BigDecimal.valueOf(value).setScale(decimals, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
 	}
 

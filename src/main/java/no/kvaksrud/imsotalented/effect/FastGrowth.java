@@ -9,17 +9,18 @@ import java.util.List;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * Fast Growth: a crop's per-random-tick growth probability is multiplied by
  * {@link TalentValues#growthMultiplier(int)} (1.0 without the talent, 2.5 at the top level), the multiplier
- * coming from the MAX Fast Growth level among players within {@link #RADIUS} blocks horizontally of the crop
- * (any height). No player in range → exactly the vanilla growth.
+ * coming from the highest Fast Growth level among players within {@link #RADIUS} blocks horizontally of the crop
+ * (any height). No player in range: exactly the vanilla growth. Only the {@link Crops seven classic crops} grow
+ * faster, not torchflowers or other blocks that are crops in code.
  *
- * <p>Vanilla grows on the roll {@code nextInt(bound) == 0} ({@code CropBlock}: bound is
+ * <p>Vanilla grows on the roll {@code nextInt(bound) == 0} (wheat, carrots, potatoes and beetroots: bound is
  * {@code 25/growthSpeed + 1}; nether wart, sweet berry bush and cocoa each roll a fixed 10/5/5). The growth
- * mixins wrap that one roll, call the original first, and hand the failed roll plus the level state to
+ * mixin wraps that one roll, calls the original first, and hands the failed roll plus the level state to
  * {@link #resolve}: the vanilla draw keeps the level's RNG stream bit-for-bit when no talent is active, and
  * the talent consumes one extra uniform from the level RNG only when it has a level to work with.
  */
@@ -85,16 +86,16 @@ public final class FastGrowth {
 
 	/**
 	 * Game side: runs the vanilla roll first (the level RNG stream stays vanilla-identical when no talent is
-	 * in play) and applies the talent to a failed roll.
+	 * in play) and applies the talent to a failed roll of a crop that {@link Crops#canGrow can grow}.
 	 */
-	public static int resolveGrowthRoll(int bound, Level level, BlockPos pos, Roll vanilla) {
+	public static int resolveGrowthRoll(int bound, ServerLevel level, BlockPos pos, BlockState state, Roll vanilla) {
 		int roll = vanilla.roll(bound);
 
-		if (roll != 0 && level instanceof ServerLevel serverLevel) {
-			int talentLevel = maxLevelInRadius(serverLevel, pos);
+		if (roll != 0 && Crops.canGrow(state)) {
+			int talentLevel = maxLevelInRadius(level, pos);
 
 			if (talentLevel > 0) {
-				return resolve(roll, bound, talentLevel, serverLevel.getRandom().nextFloat());
+				return resolve(roll, bound, talentLevel, level.getRandom().nextFloat());
 			}
 		}
 
@@ -102,7 +103,7 @@ public final class FastGrowth {
 	}
 
 	/**
-	 * The MAX Fast Growth level among this level's players within {@link #RADIUS} blocks horizontally of
+	 * The highest Fast Growth level among this level's players within {@link #RADIUS} blocks horizontally of
 	 * {@code pos} (any height); 0 when none. Cost: one {@code players()} reference read (the level's
 	 * always-in-memory player list — the early-out for an empty level), then per player one squared planar
 	 * distance check and, only for an in-range player, one talent data read.
@@ -127,7 +128,7 @@ public final class FastGrowth {
 				continue;
 			}
 
-			int playerLevel = Talents.level(player, Talent.FAST_GROWTH);
+			int playerLevel = Talents.effectiveLevel(player, Talent.FAST_GROWTH);
 
 			if (playerLevel > max) {
 				max = playerLevel;

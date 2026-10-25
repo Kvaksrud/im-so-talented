@@ -22,7 +22,7 @@ public final class MiningSpeed {
 
 	/** The {@code mining_efficiency} value {@code Player.getDestroySpeed} adds, with the talent in it. */
 	public static double miningEfficiency(Player player, double attributeValue) {
-		int level = Talents.level(player, Talent.FASTER_MINING);
+		int level = Talents.effectiveLevel(player, Talent.FASTER_MINING);
 
 		if (level <= 0) {
 			return attributeValue;

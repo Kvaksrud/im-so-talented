@@ -49,7 +49,7 @@ public final class MoreLuck {
 	}
 
 	private static int withTalent(Player player, int gearLevel) {
-		int level = Talents.level(player, Talent.MORE_LUCK);
+		int level = Talents.effectiveLevel(player, Talent.MORE_LUCK);
 		return level > 0 ? Talents.rules(player).combine(gearLevel, TalentValues.luckLevel(level)) : gearLevel;
 	}
 }

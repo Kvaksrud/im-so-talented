@@ -11,8 +11,6 @@ import net.minecraft.client.gui.screens.MenuScreens;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.protocol.game.ServerboundContainerClosePacket;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -24,13 +22,14 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
  * a key of its own, unbound unless the player binds one; and a button above the survival inventory, left of the talent
  * tree's.
  *
- * <p>Shift with the inventory key only means the backpack once the Backpack talent is bought: until then it opens the
- * inventory as always, so sneaking while opening the inventory never turns into a "buy Backpack first" message. The
- * key of its own and the button always ask, and the server, which owns the menu, says no until the talent is bought.
+ * <p>Shift with the inventory key only means the backpack once the Backpack talent is bought: until then (and in
+ * spectator, where the server refuses it) it opens the inventory as always, so sneaking while opening the inventory
+ * never turns into a "buy Backpack first" message. The key of its own and the button always ask, and the server, which
+ * owns the menu, says no until the talent is bought. On a server without the mod they say so on the action bar.
  */
 public final class BackpackClient {
 	/** Unbound by default, since Shift with the inventory key does the job; also closes the backpack. */
-	public static final KeyMapping OPEN_KEY = new KeyMapping("key.imsotalented.open_backpack", InputConstants.UNKNOWN.getValue(), TalentClient.KEY_CATEGORY);
+	public static final KeyMapping OPEN_BACKPACK = new KeyMapping("key.imsotalented.open_backpack", InputConstants.UNKNOWN.getValue(), TalentClient.KEY_CATEGORY);
 
 	/** Left of the talent tree's button (order 0). */
 	private static final int INVENTORY_BUTTON_ORDER = 1;
@@ -39,7 +38,7 @@ public final class BackpackClient {
 	}
 
 	public static void init() {
-		KeyMappingHelper.registerKeyMapping(OPEN_KEY);
+		KeyMappingHelper.registerKeyMapping(OPEN_BACKPACK);
 		MenuScreens.register(Backpacks.MENU, BackpackScreen::new);
 
 		// At the start of the tick, before vanilla handles key presses and opens the inventory for the same press. Key
@@ -62,18 +61,22 @@ public final class BackpackClient {
 		});
 
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
-			while (OPEN_KEY.consumeClick()) {
+			while (OPEN_BACKPACK.consumeClick()) {
 				requestOpen();
 			}
 		});
 
-		InventoryButtons.register(INVENTORY_BUTTON_ORDER, Items.BUNDLE, Component.translatable("key.imsotalented.open_backpack"),
+		InventoryButtons.register(INVENTORY_BUTTON_ORDER, Items.BUNDLE, Component.translatable(OPEN_BACKPACK.getName()),
 				BackpackClient::openFromInventory);
 	}
 
-	/** Whether Shift with the inventory key means the backpack: the server has the mod and the talent is bought. */
+	/**
+	 * Whether Shift with the inventory key means the backpack: the server has the mod, the talent is bought, and the
+	 * player isn't a spectator (the server refuses those, so vanilla gets the key).
+	 */
 	private static boolean canOpen(LocalPlayer player) {
-		return ClientPlayNetworking.canSend(OpenBackpackPayload.TYPE) && Backpacks.unlockedSlots(player) > 0;
+		return ImSoTalentedClient.serverHasMod() && ClientPlayNetworking.canSend(OpenBackpackPayload.TYPE)
+				&& !player.isSpectator() && Backpacks.unlockedSlots(player) > 0;
 	}
 
 	/**
@@ -92,30 +95,36 @@ public final class BackpackClient {
 		return true;
 	}
 
-	/** Asks the server to open the backpack. Does nothing on a server without the mod. */
+	/** Asks the server to open the backpack, or on a server without the mod says on the action bar that it hasn't. */
 	public static void requestOpen() {
-		if (Minecraft.getInstance().player != null && ClientPlayNetworking.canSend(OpenBackpackPayload.TYPE)) {
-			ClientPlayNetworking.send(OpenBackpackPayload.INSTANCE);
+		LocalPlayer player = Minecraft.getInstance().player;
+
+		if (player == null) {
+			return;
 		}
+
+		if (!ImSoTalentedClient.serverHasMod() || !ClientPlayNetworking.canSend(OpenBackpackPayload.TYPE)) {
+			player.sendOverlayMessage(Component.translatable("message.imsotalented.no_server_mod"));
+			return;
+		}
+
+		ClientPlayNetworking.send(OpenBackpackPayload.INSTANCE);
 	}
 
 	/**
-	 * From the inventory screen: first tell the server the inventory closed, as Esc would, so it puts the 2x2 crafting
-	 * grid and the item on the cursor back into the inventory. Otherwise they would stay in the inventory's menu while
-	 * the backpack is open, and an item on the cursor would be lost on leaving the game. The screen itself stays
-	 * until the backpack replaces it. Without the talent the server only answers with a message, so the
-	 * inventory is left as it is.
+	 * From the inventory screen: the inventory's menu closes first ({@link InventoryButtons#closeInventoryMenu}), so
+	 * the crafting grid and the cursor item go back into the inventory. The screen itself stays until the backpack
+	 * replaces it. Without the talent the server only answers with a message, so the inventory is left as it is.
 	 */
 	private static void openFromInventory() {
 		LocalPlayer player = Minecraft.getInstance().player;
 
-		if (player == null || !ClientPlayNetworking.canSend(OpenBackpackPayload.TYPE)) {
+		if (player == null) {
 			return;
 		}
 
-		if (player.containerMenu == player.inventoryMenu && Backpacks.unlockedSlots(player) > 0) {
-			player.connection.send(new ServerboundContainerClosePacket(player.inventoryMenu.containerId));
-			player.inventoryMenu.setCarried(ItemStack.EMPTY);
+		if (ImSoTalentedClient.serverHasMod() && Backpacks.unlockedSlots(player) > 0) {
+			InventoryButtons.closeInventoryMenu(player);
 		}
 
 		requestOpen();

@@ -1,16 +1,20 @@
 package no.kvaksrud.imsotalented;
 
+import java.nio.file.Path;
+
+import com.google.common.annotations.VisibleForTesting;
 import no.kvaksrud.imsotalented.command.TalentCommand;
 import no.kvaksrud.imsotalented.effect.TalentEffects;
 import no.kvaksrud.imsotalented.inventory.Backpacks;
 import no.kvaksrud.imsotalented.network.BuyTalentPayload;
+import no.kvaksrud.imsotalented.network.RequestThrottle;
 import no.kvaksrud.imsotalented.network.TalentRulesPayload;
 import no.kvaksrud.imsotalented.network.ToggleTalentPayload;
 import no.kvaksrud.imsotalented.talent.Talent;
 import no.kvaksrud.imsotalented.talent.TalentData;
 import no.kvaksrud.imsotalented.talent.TalentRules;
-import no.kvaksrud.imsotalented.talent.TalentTree;
 import no.kvaksrud.imsotalented.talent.Talents;
+import no.kvaksrud.imsotalented.talent.TreeXpLedger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,6 +29,7 @@ import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.event.Event;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
@@ -49,34 +54,54 @@ public class ImSoTalented implements ModInitializer {
 					.copyOnDeath());
 
 	/**
-	 * Tree XP earned but not yet a whole point, per tree in {@link TalentTree} order. Pure server bookkeeping: not
-	 * saved, not synced, so a fraction of a point is lost on leaving, which nobody will notice.
+	 * The server's tree XP bookkeeping per player ({@link TreeXpLedger}): XP earned but not yet committed, each tree's
+	 * hourly allowance and the last camera turn. Not saved and not synced; kept through death so dying doesn't reset
+	 * the hourly allowance.
 	 */
-	public static final AttachmentType<double[]> TREE_XP_FRACTIONS = AttachmentRegistry.createDefaulted(id("tree_xp_fractions"),
-			() -> new double[TalentTree.values().length]);
+	public static final AttachmentType<TreeXpLedger> TREE_XP_LEDGER = AttachmentRegistry.create(id("tree_xp_ledger"),
+			builder -> builder.initializer(TreeXpLedger::new).copyOnDeath());
+
+	/**
+	 * When the player's last buy, toggle and backpack request was handled ({@link RequestThrottle}). Not saved, not
+	 * synced and not copied on respawn: it lives as long as the player entity.
+	 */
+	public static final AttachmentType<RequestThrottle> REQUEST_THROTTLE = AttachmentRegistry.create(id("request_throttle"),
+			builder -> builder.initializer(RequestThrottle::new));
 
 	@Override
 	public void onInitialize() {
-		loadConfig();
-		// Read again for every world or server start, so an edit doesn't need a game restart.
+		// Read for every world or server start, so an edit doesn't need a game restart. Until a server starts nothing
+		// reads them, so the defaults stand in.
 		ServerLifecycleEvents.SERVER_STARTING.register(_ -> loadConfig());
 
 		PayloadTypeRegistry.serverboundPlay().register(BuyTalentPayload.TYPE, BuyTalentPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(ToggleTalentPayload.TYPE, ToggleTalentPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(TalentRulesPayload.TYPE, TalentRulesPayload.CODEC);
 
-		ServerPlayNetworking.registerGlobalReceiver(BuyTalentPayload.TYPE, (payload, context) ->
-				Talent.byId(payload.talentId()).ifPresent(talent -> Talents.tryBuy(context.player(), talent)));
+		// The client only asks for what its own checks allow, so an unknown id means a modified or mismatched client.
+		ServerPlayNetworking.registerGlobalReceiver(BuyTalentPayload.TYPE, (payload, context) -> {
+			ServerPlayer player = context.player();
 
-		// The payload carries only the id; the server reads the current state and flips it: a talent that is
-		// disabled (off) goes on, one that is enabled goes off.
-		ServerPlayNetworking.registerGlobalReceiver(ToggleTalentPayload.TYPE, (payload, context) ->
-				Talent.byId(payload.talentId()).ifPresent(talent ->
-						Talents.toggle(context.player(), talent, Talents.data(context.player()).isDisabled(talent))));
+			if (RequestThrottle.allow(player, RequestThrottle.Request.BUY)) {
+				Talent.byId(payload.talentId()).ifPresentOrElse(talent -> Talents.tryBuy(player, talent),
+						() -> logUnknownTalent(player, "buying", payload.talentId()));
+			}
+		});
+
+		// The payload carries the state the player clicked for, so a double click or a command in between can't turn
+		// it the other way; the server checks the player may toggle it at all.
+		ServerPlayNetworking.registerGlobalReceiver(ToggleTalentPayload.TYPE, (payload, context) -> {
+			ServerPlayer player = context.player();
+
+			if (RequestThrottle.allow(player, RequestThrottle.Request.TOGGLE)) {
+				Talent.byId(payload.talentId()).ifPresentOrElse(talent -> Talents.toggle(player, talent, payload.on(), true),
+						() -> logUnknownTalent(player, "toggling", payload.talentId()));
+			}
+		});
 
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
 			ServerPlayer player = handler.getPlayer();
-			sender.sendPacket(new TalentRulesPayload(config.rules()));
+			sender.sendPacket(new TalentRulesPayload(TalentRulesPayload.PROTOCOL, config.rules()));
 			Talents.applyAll(player);
 		});
 
@@ -90,6 +115,13 @@ public class ImSoTalented implements ModInitializer {
 			if (!alive) {
 				// Vanilla fills health before the talent's extra hearts are back; fill those too.
 				newPlayer.setHealth(newPlayer.getMaxHealth());
+			}
+		});
+
+		// Tree XP earned during the tick is committed once at its end: one talent data sync per player at most.
+		ServerTickEvents.END_SERVER_TICK.register(server -> {
+			for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+				Talents.commitPending(player);
 			}
 		});
 
@@ -107,7 +139,11 @@ public class ImSoTalented implements ModInitializer {
 		return config;
 	}
 
-	/** Replaces the settings until the next world or server start; the game tests use this. */
+	/**
+	 * For the game tests only: replaces the settings until the next world or server start. Not part of the mod's API;
+	 * the settings come from the file.
+	 */
+	@VisibleForTesting
 	public static void setConfig(ImSoTalentedConfig newConfig) {
 		config = newConfig;
 	}
@@ -122,6 +158,12 @@ public class ImSoTalented implements ModInitializer {
 	}
 
 	private static void loadConfig() {
-		config = ImSoTalentedConfig.load(FabricLoader.getInstance().getConfigDir().resolve(ImSoTalentedConfig.FILE_NAME));
+		Path file = FabricLoader.getInstance().getConfigDir().resolve(ImSoTalentedConfig.FILE_NAME);
+		config = ImSoTalentedConfig.load(file);
+		LOGGER.info("Settings in effect (from {}): {}", file, config.summary());
+	}
+
+	private static void logUnknownTalent(ServerPlayer player, String action, String talentId) {
+		LOGGER.debug("Rejected {} \"{}\" for {} ({}): unknown talent", action, talentId, player.getName().getString(), player.getUUID());
 	}
 }

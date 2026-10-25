@@ -4,9 +4,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.List;
+
 import no.kvaksrud.imsotalented.talent.TalentRules.EnchantmentStacking;
 import no.kvaksrud.imsotalented.talent.TalentRules.Progress;
 import org.junit.jupiter.api.Test;
+
+import net.minecraft.network.codec.ByteBufCodecs;
+
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 
 class TalentRulesTest {
 	private static final TalentRules RULES = TalentRules.DEFAULTS;
@@ -169,5 +176,52 @@ class TalentRulesTest {
 		assertEquals(EnchantmentStacking.ADD, EnchantmentStacking.byId(" Add ").orElseThrow());
 		assertEquals(EnchantmentStacking.HIGHEST, EnchantmentStacking.byId("highest").orElseThrow());
 		assertTrue(EnchantmentStacking.byId("max").isEmpty());
+	}
+
+	@Test
+	void theCachedThresholdsMatchTheSumOfTheLevels() {
+		// The first 128 levels' thresholds are cached per set of rules; past them they're summed. Both must agree.
+		for (TalentRules rules : List.of(RULES, new TalentRules(10, 1.0, EnchantmentStacking.ADD), new TalentRules(1_000_000, 2.0, EnchantmentStacking.HIGHEST),
+				new TalentRules(0, 1.5, EnchantmentStacking.HIGHEST))) {
+			for (int level = 0; level <= 200; level++) {
+				assertEquals(rules.totalCost(0, level), rules.xpForLevel(level), rules + " at level " + level);
+			}
+		}
+
+		assertEquals(RULES.xpForLevel(32), new TalentRules(25, 1.18, EnchantmentStacking.ADD).xpForLevel(32),
+				"the stacking rule plays no part in the prices");
+	}
+
+	@Test
+	void theRulesSyncWithEveryField() {
+		for (TalentRules rules : List.of(RULES, new TalentRules(40, 1.5, EnchantmentStacking.ADD), new TalentRules(0, 2.0, EnchantmentStacking.HIGHEST))) {
+			ByteBuf buffer = Unpooled.buffer();
+
+			try {
+				TalentRules.STREAM_CODEC.encode(buffer, rules);
+				assertEquals(rules, TalentRules.STREAM_CODEC.decode(buffer));
+				assertEquals(0, buffer.readableBytes(), "the whole message is read");
+			} finally {
+				buffer.release();
+			}
+		}
+	}
+
+	@Test
+	void anUnknownStackingIdReadsAsHighest() {
+		// A newer or broken server's id must not fail the whole packet (and disconnect the client).
+		for (int id : new int[] {2, 7, 1_000_000, -1}) {
+			ByteBuf buffer = Unpooled.buffer();
+
+			try {
+				ByteBufCodecs.VAR_INT.encode(buffer, 30);
+				ByteBufCodecs.DOUBLE.encode(buffer, 1.25);
+				ByteBufCodecs.VAR_INT.encode(buffer, id);
+				assertEquals(new TalentRules(30, 1.25, EnchantmentStacking.HIGHEST), TalentRules.STREAM_CODEC.decode(buffer), "stacking id " + id);
+				assertEquals(0, buffer.readableBytes());
+			} finally {
+				buffer.release();
+			}
+		}
 	}
 }

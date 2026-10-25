@@ -17,13 +17,13 @@ public final class ShieldMastery {
 
 	/** Ticks the shield has to be up before it blocks (5 for a vanilla shield). */
 	public static int raiseDelayTicks(Player player, int ticks) {
-		int level = Talents.level(player, Talent.SHIELD_MASTERY);
+		int level = Talents.effectiveLevel(player, Talent.SHIELD_MASTERY);
 		return level > 0 ? reducedTicks(ticks, TalentValues.shieldRaiseReduction(level)) : ticks;
 	}
 
 	/** Seconds an attacker's axe disables the shield for, before the shield's own cooldown scale. */
 	public static float disableSeconds(Player player, float seconds) {
-		int level = Talents.level(player, Talent.SHIELD_MASTERY);
+		int level = Talents.effectiveLevel(player, Talent.SHIELD_MASTERY);
 		return level > 0 ? reducedSeconds(seconds, TalentValues.shieldDisableReduction(level)) : seconds;
 	}
 

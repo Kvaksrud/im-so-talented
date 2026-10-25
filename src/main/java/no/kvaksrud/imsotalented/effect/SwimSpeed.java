@@ -3,7 +3,7 @@ package no.kvaksrud.imsotalented.effect;
 import no.kvaksrud.imsotalented.talent.TalentValues;
 
 /**
- * Swim Speed (stage FLIGHT, toggleable): multiplies the player's horizontal movement in water by
+ * Swim Speed (toggleable): multiplies the player's horizontal movement in water by
  * {@code 1 + swimSpeedBonus(level)} (1.3 at the top level), and only while the player swims under its own
  * power — the effect lives in the underwater travel path, so riding a boat or raft never triggers it.
  *
@@ -18,15 +18,8 @@ import no.kvaksrud.imsotalented.talent.TalentValues;
  * 26.3 has, {@code Attributes.WATER_MOVEMENT_EFFICIENCY} (default 0, range 0..1), is read in the same
  * travel code, but it can only pull the factor down toward 0.546 (a drag) — it can never express a speed-up.
  *
- * <p>Because Swim Speed is TOGGLEABLE, the mixin that applies it must read the player's EFFECTIVE level —
- * 0 while the talent is toggled off — through the same choke point every other effect uses:
- *
- * <pre>
- * int level = Talents.data(player).effectiveLevel(Talent.SWIM_SPEED);
- * </pre>
- *
- * That one helper call is the pattern the gliding and fun talents (P8/P9) copy: read the effective level,
- * early-out at 0, apply the pure math.
+ * <p>The {@code LivingEntityMixin} wrap reads the player's {@code Talents.effectiveLevel}, as every effect does, so
+ * switching the talent off (level 0) leaves the vanilla factor alone.
  */
 public final class SwimSpeed {
 	private SwimSpeed() {

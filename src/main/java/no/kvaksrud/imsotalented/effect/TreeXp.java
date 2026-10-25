@@ -1,10 +1,8 @@
 package no.kvaksrud.imsotalented.effect;
 
-import no.kvaksrud.imsotalented.ImSoTalented;
 import no.kvaksrud.imsotalented.talent.TalentTree;
 import no.kvaksrud.imsotalented.talent.TalentValues;
 import no.kvaksrud.imsotalented.talent.Talents;
-import org.jspecify.annotations.Nullable;
 
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerPlayer;
@@ -22,72 +20,49 @@ import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.state.properties.IntegerProperty;
-import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.level.storage.loot.BuiltInLootTables;
-import net.minecraft.world.level.storage.loot.LootContext;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 
-import net.fabricmc.fabric.api.attachment.v1.AttachmentRegistry;
-import net.fabricmc.fabric.api.attachment.v1.AttachmentType;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.loot.v3.LootTableEvents;
 import net.fabricmc.fabric.api.tag.convention.v2.ConventionalBlockTags;
 
 /**
- * Tree XP from activity: each tree fills only from its own, and every grant goes through
- * {@link Talents#earn} (which skips creative and spectator players, adds the tree's XP talent and carries fractions
- * over). The amounts are in {@link TalentValues}.
+ * Tree XP from activity: each tree fills only from its own, and every grant goes through {@link Talents#earn} (which
+ * skips creative and spectator players and players who haven't turned the camera for a while, adds the tree's XP
+ * talent, applies the hourly allowance and carries fractions over). The amounts are in {@link TalentValues}.
  * <ul>
  * <li>Gatherer: ores (the {@code c:ores} tag) broken with the right tool and without Silk Touch, other blocks a pickaxe
- *     mines (a tenth of an ore), fully grown crops harvested, and catches reeled in. Blocks for other tools pay
- *     nothing.</li>
+ *     mines (a tenth of an ore, at most one every {@link TalentValues#GATHERER_BLOCK_XP_MIN_TICKS}), ripe crops
+ *     harvested (sweet berries picked by hand too), and catches reeled in. Blocks for other tools pay nothing.</li>
  * <li>Warrior: damage a player's attacks deal to hostile mobs, up to the health the mob had left.</li>
- * <li>Guardian: damage hostile mobs aim at a player, counted before armor, shield and Block Chance, unless the hit
- *     kills them.</li>
+ * <li>Guardian: damage hostile mobs aim at a player, counted before armor, shield and Block Chance against the
+ *     player's own copy of the damage cooldown ({@link GuardianCooldown}), unless the hit kills them or vanilla turns
+ *     it away before the cooldown.</li>
  * <li>Explorer: horizontal travel under the player's own power (walking, swimming or gliding, with the client's
- *     movement keys as the proof of "own"), and each chunk entered for the first time.</li>
+ *     movement keys as the proof of "own"), and each chunk entered for the first time (at the gliding rate while
+ *     gliding).</li>
  * </ul>
  * Every decision is a pure static function of plain numbers and flags, so it's unit-testable without a game; the
  * game-side hooks below only read those inputs off the game and hand the result to {@link Talents#earn}. The hooks are
- * a block-break event, the loot drop event (fishing here, crops through {@link TalentEffects}), a wrap of
- * {@code LivingEntity.hurtServer} ({@code LivingEntityMixin}) and the end of every server tick.
+ * a block-break event, the loot drop event (fishing here, crops through {@link BountifulHarvest}), a wrap of
+ * {@code LivingEntity.hurtServer} ({@code LivingEntityMixin}) and the end of every server tick. What it keeps per
+ * player is in {@link TreeXpAttachments}.
  */
 public final class TreeXp {
 	/** Blocks a player may cover in one tick before the move counts as a teleport (pearl, command, portal) instead of travel. */
 	public static final double MAX_STEP = 8.0;
 
-	/**
-	 * Vanilla ignores a hit that lands while more than this many ticks of the damage cooldown are left, unless it is
-	 * harder than the hit that started the cooldown (then only the difference counts).
-	 */
-	private static final int COOLDOWN_GRACE_TICKS = 10;
-
-	/** The crop growth property every one of the seven Bountiful Harvest crops uses. */
-	private static final String AGE = "age";
-
 	/** No chunk yet: further out than any chunk a player can stand in. */
 	private static final long NO_CHUNK = Long.MAX_VALUE;
-
-	/**
-	 * Every chunk each player has been in, per dimension: saved, kept on death, never synced (the client has no use for
-	 * it). Created in {@link #init} (not as a static initializer) so the pure math in this class loads without the
-	 * Fabric attachment implementation, as the unit tests need.
-	 */
-	public static AttachmentType<VisitedChunks> VISITED_CHUNKS;
-
-	/** Where each player was at the end of the last tick, for measuring travel. Server bookkeeping only. Created in {@link #init}. */
-	public static AttachmentType<Travel> TRAVEL;
 
 	private TreeXp() {
 	}
 
 	/** Creates the attachments and registers the event hooks; called from {@link TalentEffects#init}. */
 	static void init() {
-		VISITED_CHUNKS = AttachmentRegistry.create(ImSoTalented.id("visited_chunks"),
-				builder -> builder.initializer(VisitedChunks::new).persistent(VisitedChunks.CODEC).copyOnDeath());
-		TRAVEL = AttachmentRegistry.create(ImSoTalented.id("explorer_travel"));
+		TreeXpAttachments.init();
 
 		// Gatherer, blocks. AFTER runs once the block is gone, before the tool takes its durability, so the main hand
 		// still holds what broke it.
@@ -116,7 +91,7 @@ public final class TreeXp {
 		// Explorer: one look at every player per tick, after the network has moved them.
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
 			for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-				onTick(player);
+				trackTravel(player);
 			}
 		});
 	}
@@ -124,34 +99,45 @@ public final class TreeXp {
 	// Gatherer
 
 	/**
-	 * Gatherer XP for one broken block, mined with a tool that gets its drops: an ore pays the ore's share, and any
-	 * other block a pickaxe mines pays a tenth of that. An ore mined with Silk Touch counts as a plain pickaxe block,
-	 * since it drops itself and could be placed and mined again. Nothing pays without the right tool (a bare hand, or a
-	 * pickaxe below the block's tier), and blocks for other tools (sand, dirt, logs) never pay.
-	 *
-	 * @param pickaxeBlock whether a pickaxe is the tool for the block ({@code minecraft:mineable/pickaxe})
+	 * Whether a block pays as an ore: one from {@code c:ores}, mined without Silk Touch. An ore mined with Silk Touch
+	 * counts as a plain pickaxe block, since it drops itself and could be placed and mined again.
 	 */
-	public static double blockXp(boolean ore, boolean pickaxeBlock, boolean correctTool, boolean silkTouch) {
+	public static boolean paysAsOre(boolean ore, boolean silkTouch) {
+		return ore && !silkTouch;
+	}
+
+	/**
+	 * Gatherer XP for one broken block, mined with a tool that gets its drops: an ore ({@link #paysAsOre}) always pays
+	 * the ore's share, and any other block a pickaxe mines pays a tenth of that, but at most once every
+	 * {@link TalentValues#GATHERER_BLOCK_XP_MIN_TICKS}: netherrack under a good pickaxe or stone under Haste II breaks
+	 * in one hit, so sweeping the crosshair over it would otherwise pay every tick. Nothing pays without the right tool
+	 * (a bare hand, or a pickaxe below the block's tier), and blocks for other tools (sand, dirt, logs) never pay.
+	 *
+	 * @param pickaxeBlock        whether a pickaxe is the tool for the block ({@code minecraft:mineable/pickaxe})
+	 * @param ticksSincePaidBlock ticks since a plain pickaxe block last paid this player ({@link Long#MAX_VALUE} if none
+	 *                            has)
+	 */
+	public static double blockXp(boolean ore, boolean pickaxeBlock, boolean correctTool, boolean silkTouch, long ticksSincePaidBlock) {
 		if (!correctTool) {
 			return 0.0;
 		}
 
-		if (ore && !silkTouch) {
+		if (paysAsOre(ore, silkTouch)) {
 			return TalentValues.GATHERER_XP_PER_ORE;
 		}
 
-		return pickaxeBlock ? TalentValues.GATHERER_XP_PER_BLOCK : 0.0;
+		return pickaxeBlock && ticksSincePaidBlock >= TalentValues.GATHERER_BLOCK_XP_MIN_TICKS ? TalentValues.GATHERER_XP_PER_BLOCK : 0.0;
 	}
 
 	/**
-	 * Gatherer XP for breaking one of the seven Bountiful Harvest crops: only when fully grown and the harvest produced
-	 * the crop's main item. Young carrots, potatoes, nether wart and cocoa drop their main item too, so without the age
-	 * check planting and breaking one would pay over and over.
+	 * Gatherer XP for harvesting one of the {@link Crops seven crops}: only a ripe crop ({@link Crops.Harvest#isRipe},
+	 * the same check Bountiful Harvest makes) whose harvest produced its main item. Young carrots, potatoes, nether wart
+	 * and cocoa drop their main item too, so without the age check planting and breaking one would pay over and over.
 	 *
 	 * @param mainCount how many of the main item the harvest dropped, before Bountiful Harvest's bonus
 	 */
-	public static double cropXp(int mainCount, int age, int maxAge) {
-		return mainCount > 0 && age >= maxAge ? TalentValues.GATHERER_XP_PER_CROP : 0.0;
+	public static double cropXp(int mainCount, boolean ripe) {
+		return mainCount > 0 && ripe ? TalentValues.GATHERER_XP_PER_CROP : 0.0;
 	}
 
 	/** Gatherer XP for one reel-in: a catch if anything came up, nothing otherwise. */
@@ -166,36 +152,24 @@ public final class TreeXp {
 		boolean silkTouch = ore && player.registryAccess().get(Enchantments.SILK_TOUCH)
 				.map(silk -> EnchantmentHelper.getItemEnchantmentLevel(silk, tool) > 0)
 				.orElse(false);
+		long tick = player.level().getServer().getTickCount();
+		Long paidTick = player.getAttached(TreeXpAttachments.PAID_BLOCK_TICK);
+		double xp = blockXp(ore, state.is(BlockTags.MINEABLE_WITH_PICKAXE), tool.isCorrectToolForDrops(state), silkTouch,
+				paidTick != null ? tick - paidTick : Long.MAX_VALUE);
 
-		Talents.earn(player, TalentTree.GATHERER, blockXp(ore, state.is(BlockTags.MINEABLE_WITH_PICKAXE), tool.isCorrectToolForDrops(state), silkTouch));
+		if (xp > 0.0 && !paysAsOre(ore, silkTouch)) {
+			player.setAttached(TreeXpAttachments.PAID_BLOCK_TICK, tick);
+		}
+
+		Talents.earn(player, TalentTree.GATHERER, xp);
 	}
 
 	/**
-	 * Gatherer XP for a crop loot roll, from the Bountiful Harvest drop listener in {@link TalentEffects}: the breaking
-	 * player is the context's {@code this_entity} and the broken crop its {@code block_state}. Explosions, mobs and
-	 * other non-players earn nothing.
+	 * Gatherer XP for a crop harvest, from the Bountiful Harvest drop listener: the player who broke the crop or picked
+	 * the berries, with the ripeness Bountiful Harvest goes by.
 	 */
-	public static void onCropHarvest(LootContext context, int mainCount) {
-		if (mainCount <= 0 || !(context.getOptional(LootContextParams.THIS_ENTITY) instanceof ServerPlayer player)) {
-			return;
-		}
-
-		BlockState state = context.getOptional(LootContextParams.BLOCK_STATE);
-		IntegerProperty age = state != null ? ageProperty(state) : null;
-
-		if (age != null) {
-			Talents.earn(player, TalentTree.GATHERER, cropXp(mainCount, state.getValue(age), age.getPossibleValues().getLast()));
-		}
-	}
-
-	private static @Nullable IntegerProperty ageProperty(BlockState state) {
-		for (Property<?> property : state.getProperties()) {
-			if (property instanceof IntegerProperty age && AGE.equals(property.getName())) {
-				return age;
-			}
-		}
-
-		return null;
+	static void onCropHarvest(ServerPlayer player, int mainCount, boolean ripe) {
+		Talents.earn(player, TalentTree.GATHERER, cropXp(mainCount, ripe));
 	}
 
 	// Warrior and Guardian
@@ -210,22 +184,18 @@ public final class TreeXp {
 	}
 
 	/**
-	 * Guardian XP for one hit a hostile mob aims at the player, from the raw damage (after difficulty, before armor,
-	 * shield and Block Chance, so better defenses never slow the meter down).
-	 * <ul>
-	 * <li>During the damage cooldown vanilla only takes the part above the previous hit, and ignores a hit that isn't
-	 *     harder; that's what counts here too, so a crowd swinging at once doesn't pay for hits that couldn't land.</li>
-	 * <li>A hit counts for at most the player's max health: anything above that would kill an unarmored player
-	 *     outright, and the cap keeps one point-blank charged creeper from paying like an hour of fighting.</li>
-	 * </ul>
+	 * Guardian XP for one hit a hostile mob aims at the player, from the part of its raw damage (after difficulty,
+	 * before armor, shield and Block Chance, so better defenses never slow the meter down) that counts against the
+	 * player's damage cooldown ({@link GuardianCooldown#count}): a crowd swinging at once pays like its hardest hit, as
+	 * vanilla only takes that much.
+	 * <p>
+	 * A hit counts for at most the player's max health: anything above that would kill an unarmored player outright,
+	 * and the cap keeps one point-blank charged creeper from paying like an hour of fighting.
 	 *
-	 * @param inCooldown whether the hit lands in the damage cooldown and doesn't bypass it
-	 * @param lastHurt   the damage of the hit that started the cooldown
+	 * @param counted the raw damage that counts
 	 */
-	public static double guardianXp(float damage, boolean inCooldown, float lastHurt, float maxHealth) {
-		double counted = inCooldown ? (double) damage - lastHurt : damage;
-
-		if (!(counted > 0.0) || !Double.isFinite(counted)) {
+	public static double guardianXp(float counted, float maxHealth) {
+		if (!(counted > 0.0F) || !Float.isFinite(counted)) {
 			return 0.0;
 		}
 
@@ -243,26 +213,36 @@ public final class TreeXp {
 	/**
 	 * Warrior and Guardian XP once a hit has been dealt with, from the wrap of {@code LivingEntity.hurtServer}. The
 	 * wrap sees every outcome: a hit Block Chance shrugged off and one a shield fully blocked come back as "not hurt",
-	 * and still count for Guardian.
+	 * and still count for Guardian. A hit vanilla turned away before its damage cooldown (Fire Resistance against a
+	 * fireball, an immune or dying player) did nothing at all and counts for nothing.
 	 *
-	 * @param damage         the damage the hit arrived with
-	 * @param healthBefore   the victim's health before the hit
-	 * @param cooldownBefore the victim's damage cooldown ticks before the hit
-	 * @param lastHurtBefore the damage of the hit that started that cooldown
+	 * @param damage       the damage the hit arrived with
+	 * @param healthBefore the victim's health before the hit
+	 * @param rejected     whether vanilla turned the hit on a player away before the cooldown
+	 *                     ({@link DamageCooldown#rejectsBeforeCooldown}, asked before the hit)
 	 */
-	public static void afterHurt(LivingEntity victim, DamageSource source, float damage, float healthBefore, int cooldownBefore, float lastHurtBefore) {
+	public static void afterHurt(LivingEntity victim, DamageSource source, float damage, float healthBefore, boolean rejected) {
 		if (victim instanceof ServerPlayer player) {
-			// Only attacks by a hostile mob (its melee, arrows, fireballs, explosion…), not its thorns, and not the
-			// hit that killed the player.
-			if (source.getEntity() instanceof Enemy && !source.is(DamageTypes.THORNS) && !player.isDeadOrDying()) {
-				boolean inCooldown = cooldownBefore > COOLDOWN_GRACE_TICKS && !source.is(DamageTypeTags.BYPASSES_COOLDOWN);
-				Talents.earn(player, TalentTree.GUARDIAN, guardianXp(damage, inCooldown, lastHurtBefore, player.getMaxHealth()));
+			if (!rejected) {
+				onPlayerHurt(player, source, damage);
 			}
 		} else if (victim instanceof Enemy && source.getEntity() instanceof ServerPlayer attacker
 				// A real attack, the same ones Stronger Weapons boosts: melee, or an arrow or trident the player shot.
 				// Thorns, fire and explosions the player is to blame for don't count.
 				&& WeaponType.of(attacker, source) != null) {
 			Talents.earn(attacker, TalentTree.WARRIOR, warriorXp(healthBefore, victim.getHealth()));
+		}
+	}
+
+	private static void onPlayerHurt(ServerPlayer player, DamageSource source, float damage) {
+		// Every hit that gets to the cooldown moves Guardian's copy of it, whoever dealt it, as every hit moves vanilla's.
+		float counted = player.getAttachedOrCreate(TreeXpAttachments.GUARDIAN_COOLDOWN)
+				.count(damage, player.level().getServer().getTickCount(), source.is(DamageTypeTags.BYPASSES_COOLDOWN));
+
+		// Only attacks by a hostile mob (its melee, arrows, fireballs, explosion…), not its thorns, and not the hit that
+		// killed the player.
+		if (source.getEntity() instanceof Enemy && !source.is(DamageTypes.THORNS) && !player.isDeadOrDying()) {
+			Talents.earn(player, TalentTree.GUARDIAN, guardianXp(counted, player.getMaxHealth()));
 		}
 	}
 
@@ -322,19 +302,28 @@ public final class TreeXp {
 	}
 
 	/**
+	 * Explorer XP for entering a chunk for the first time: in full however the player got there (exploring by boat or
+	 * on horseback counts), and at {@link TalentValues#EXPLORER_GLIDE_FACTOR} while gliding, since an elytra and
+	 * rockets cross chunks far faster than anything else.
+	 */
+	public static double newChunkXp(boolean gliding) {
+		return gliding ? TalentValues.EXPLORER_XP_PER_NEW_CHUNK * TalentValues.EXPLORER_GLIDE_FACTOR : TalentValues.EXPLORER_XP_PER_NEW_CHUNK;
+	}
+
+	/**
 	 * Explorer, once per player per tick. A player standing still costs one attachment read and two comparisons. A
 	 * moving one earns for the distance, and crossing into another chunk checks whether it's a new one. The first tick
 	 * after joining, respawning or changing dimension only notes where the player is.
 	 */
-	private static void onTick(ServerPlayer player) {
-		Travel travel = player.getAttached(TRAVEL);
+	private static void trackTravel(ServerPlayer player) {
+		Travel travel = player.getAttached(TreeXpAttachments.TRAVEL);
 		ResourceKey<Level> dimension = player.level().dimension();
 		double x = player.getX();
 		double z = player.getZ();
 
 		if (travel == null || travel.dimension != dimension) {
 			travel = new Travel(x, z, dimension);
-			player.setAttached(TRAVEL, travel);
+			player.setAttached(TreeXpAttachments.TRAVEL, travel);
 			visitChunk(player, travel);
 			return;
 		}
@@ -355,21 +344,22 @@ public final class TreeXp {
 	}
 
 	/**
-	 * A new chunk pays however the player got there (riding and teleports too), since each pays only once. Creative and
-	 * spectator players earn nothing, so their chunks aren't marked either: those still pay once they play survival.
+	 * A new chunk pays ({@link #newChunkXp}) however the player got there (riding and teleports too), since each pays
+	 * only once. Creative and spectator players earn nothing, so their chunks aren't marked either: those still pay once
+	 * they play survival.
 	 */
 	private static void visitChunk(ServerPlayer player, Travel travel) {
 		ChunkPos chunk = player.chunkPosition();
 		long key = chunk.pack();
 
-		if (key == travel.chunk || player.isCreative() || player.isSpectator()) {
+		if (key == travel.chunk || Talents.isCreative(player) || player.isSpectator()) {
 			return;
 		}
 
 		travel.chunk = key;
 
-		if (player.getAttachedOrCreate(VISITED_CHUNKS).visit(travel.dimension.identifier().toString(), chunk.x(), chunk.z())) {
-			Talents.earn(player, TalentTree.EXPLORER, TalentValues.EXPLORER_XP_PER_NEW_CHUNK);
+		if (player.getAttachedOrCreate(TreeXpAttachments.VISITED_CHUNKS).visit(travel.dimension.identifier().toString(), chunk.x(), chunk.z())) {
+			Talents.earn(player, TalentTree.EXPLORER, newChunkXp(player.isFallFlying()));
 		}
 	}
 

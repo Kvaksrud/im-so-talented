@@ -1,99 +1,84 @@
 package no.kvaksrud.imsotalented.effect;
 
+import java.util.List;
+
 import no.kvaksrud.imsotalented.talent.Talent;
 import no.kvaksrud.imsotalented.talent.TalentValues;
 import no.kvaksrud.imsotalented.talent.Talents;
 
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.Identifier;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.Item;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.storage.loot.LootContext;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 
+import net.fabricmc.fabric.api.loot.v3.LootTableEvents;
+
 /**
- * Bountiful Harvest: a player with the talent harvests the crop's main item {@code level} extra times
- * (L5: wheat 1 → 6). The level is read from the breaking player in the loot context's {@code THIS_ENTITY}
- * at loot time — no per-player caching, and explosions, animals and talent-less players get nothing.
+ * Bountiful Harvest: a player with the talent gets {@link TalentValues#harvestBonus} extra copies of a ripe crop's main
+ * item, one per level (at level 3 mature wheat drops 4 instead of 1). It works on the {@link Crops seven classic crops},
+ * broken or, for the sweet berry bush, picked by hand.
  *
- * <p>Only the main item's count is increased, and only when the harvest actually produced one: the 26.3
- * tables of the seven targets produce their main item at the full growth stage (wheat, carrots, potatoes,
- * beetroots; nether wart and the sweet berry bush at their max age), but not every stage of every crop —
- * young wheat produces only seeds, a young sweet berry bush produces nothing, and young carrots, potatoes
- * and nether wart produce a single main item (cocoa produces 1 young / 3 ripe). The bonus is therefore
- * granted only when the rolled drops already contain the main item ({@link #bonusFor(int, int)}): it never
- * conjures the item from a stage that hasn't produced it. Seeds, side drops and everything else keep their
- * vanilla behavior.
+ * <p>Only a ripe crop gets it ({@link Crops.Harvest#isRipe}): a young carrot, potato, nether wart or cocoa pod drops one
+ * of its item too, and a bonus on those would turn planting and breaking into endless items. And only when the harvest
+ * produced the main item at all, so a table a datapack changed never conjures it. Seeds, side drops and everything
+ * else keep their vanilla counts.
  *
- * <p>The wiring is in {@link TalentEffects#init()} (a {@code LootTableEvents.MODIFY_DROPS} listener), which
- * is server-side — loot never runs on the client.
+ * <p>Read from the harvesting player in the loot context when the table rolls, server side (loot never runs on the
+ * client): explosions, animals and players without the talent get nothing. The same roll pays Gatherer's crop XP
+ * ({@link TreeXp#onCropHarvest}), with the same ripeness.
  */
 public final class BountifulHarvest {
 	private BountifulHarvest() {
 	}
 
-	/**
-	 * The classic farm harvests, encoded as explicit block id → main-drop item id pairs (the 26.3 ids,
-	 * confirmed against {@code data/minecraft/loot_table/blocks/*.json}). Null for blocks that are not
-	 * part of the talent. Pure and game-free, so the unit tests exercise it without a running game.
-	 */
-	public static String mainDropId(String blockId) {
-		return switch (blockId) {
-			case "wheat" -> "wheat";
-			case "carrots" -> "carrot";
-			case "potatoes" -> "potato";
-			case "beetroots" -> "beetroot";
-			case "nether_wart" -> "nether_wart";
-			case "sweet_berry_bush" -> "sweet_berries";
-			case "cocoa" -> "cocoa_beans";
-			default -> null;
-		};
+	/** Registers the loot drop listener; called from {@link TalentEffects#init}. */
+	static void init() {
+		LootTableEvents.MODIFY_DROPS.register((table, context, drops) -> {
+			Crops.Harvest harvest = table.unwrapKey().map(Crops::harvest).orElse(null);
+
+			if (harvest != null) {
+				onHarvest(harvest, context, drops);
+			}
+		});
 	}
 
-	/** The main-drop item for a block id, resolved from the item registry; null when the block is not targeted. */
-	public static Item mainDropOf(String blockId) {
-		String itemId = mainDropId(blockId);
-
-		if (itemId == null) {
-			return null;
-		}
-
-		return BuiltInRegistries.ITEM.getOptional(Identifier.fromNamespaceAndPath("minecraft", itemId)).orElse(null);
-	}
-
-	/** The main-drop item for a block loot table path (such as {@code blocks/wheat}); null for other tables. */
-	public static Item mainDropForTablePath(String tablePath) {
-		if (tablePath == null || !tablePath.startsWith("blocks/")) {
-			return null;
-		}
-
-		return mainDropOf(tablePath.substring("blocks/".length()));
-	}
-
-	/** Pure: the extra main-item copies this talent level adds per harvest; level 0 (and negatives) add nothing. */
+	/** The extra main-item copies the talent at this level adds to a ripe harvest; nothing at level 0 or below. */
 	public static int extraItems(int level) {
 		return level > 0 ? TalentValues.harvestBonus(level) : 0;
 	}
 
 	/**
-	 * Pure: the bonus copies for a harvest that produced {@code mainCount} copies of the main item — the level's
-	 * bonus only when the harvest actually produced at least one (a young sweet berry bush produces nothing and
-	 * a young wheat produces only seeds, so neither gets a bonus); 0 at level 0 or for a non-positive count.
+	 * The extra copies for one harvest: the level's {@link #extraItems} when the crop was ripe and the harvest dropped
+	 * at least one of its main item, otherwise none.
+	 *
+	 * @param mainCount how many of the main item the harvest dropped
 	 */
-	public static int bonusFor(int mainCount, int level) {
-		return mainCount > 0 && level > 0 ? TalentValues.harvestBonus(level) : 0;
+	public static int bonusFor(int mainCount, boolean ripe, int level) {
+		return mainCount > 0 && ripe ? extraItems(level) : 0;
 	}
 
-	/**
-	 * The bonus for this loot roll: the breaking player's level, in extra copies. Reads the breaking entity
-	 * ({@code THIS_ENTITY}) from the context, the same way the More Luck loot mixins read it; a non-player
-	 * breaker (explosion, mob, no entity) or a player without the talent adds nothing.
-	 */
-	public static int extraItems(LootContext context) {
-		if (context.getOptional(LootContextParams.THIS_ENTITY) instanceof Player player) {
-			return extraItems(Talents.level(player, Talent.BOUNTIFUL_HARVEST));
+	private static void onHarvest(Crops.Harvest harvest, LootContext context, List<ItemStack> drops) {
+		ServerPlayer player = harvest.harvester(context);
+
+		if (player == null) {
+			return;
 		}
 
-		return 0;
+		int mainCount = 0;
+
+		for (ItemStack stack : drops) {
+			if (stack.is(harvest.main())) {
+				mainCount += stack.getCount();
+			}
+		}
+
+		boolean ripe = harvest.isRipe(context.getOptional(LootContextParams.BLOCK_STATE));
+		// Counted before the bonus goes in, so the XP is the same with or without the talent.
+		TreeXp.onCropHarvest(player, mainCount, ripe);
+		int extra = bonusFor(mainCount, ripe, Talents.effectiveLevel(player, Talent.BOUNTIFUL_HARVEST));
+
+		if (extra > 0) {
+			drops.add(new ItemStack(harvest.main(), extra));
+		}
 	}
 }

@@ -28,7 +28,8 @@ import org.jspecify.annotations.Nullable;
  * start at the top, so a tab's root is always in the same place. Rows are a node plus a gap for the connector lines;
  * the gap shrinks from {@link #MAX_ROW_GAP} towards {@link #MIN_ROW_GAP} when the screen is short. The tabs sit on the
  * left rather than on top because height is what runs out: the automatic GUI scale leaves a 854x480 window (the game's
- * default) 427x240, and with the tabs beside it the whole window fits that with a 7 px row gap.
+ * default) 427x240, and with the tabs beside it the whole window fits that with a 7 px row gap. The tabs and the
+ * window together are {@link #TOTAL_WIDTH} wide, so a 4:3 window's 320x240 fits them too.
  *
  * <p>Each prereq gets its own connector, an elbow: down from the parent, across in the gap right above the child,
  * and down into the child. A prereq two rows up runs straight down past the row between, through the gap between two
@@ -63,8 +64,14 @@ public final class TalentTreeLayout {
 	 * The screen stretches the texture's header to fit.
 	 */
 	public static final int HEADER_HEIGHT = 30;
-	/** Between the dark area's edge and the nodes; the window's inner shadow is 6 px deep. */
+	/** Between the dark area's top and bottom edges and the nodes; the window's inner shadow is 6 px deep. */
 	private static final int TREE_PADDING = 6;
+	/**
+	 * Between the dark area's left and right edges and the columns. A pixel less than {@link #TREE_PADDING}, so the
+	 * window with its tabs fits 320 px. The widest tree leaves half a column of air each side, so the shadow still never
+	 * reaches a node.
+	 */
+	private static final int TREE_SIDE_PADDING = 5;
 	/** The first row of nodes starts this far below the window's top. */
 	private static final int TREE_TOP = HEADER_HEIGHT + TREE_PADDING;
 
@@ -74,13 +81,12 @@ public final class TalentTreeLayout {
 	public static final int TITLE_Y = 6;
 	/** The second header line (XP bar, XP numbers, pin button) is centered on this height. */
 	private static final int XP_ROW_CENTER_Y = 21;
-	/** Capital letters are 7 px tall from the text's top. */
-	private static final int CAP_HEIGHT = 7;
+	/** Capital letters and digits are 7 px tall from the text's top. */
+	public static final int CAP_HEIGHT = 7;
 	public static final int XP_TEXT_Y = XP_ROW_CENTER_Y - CAP_HEIGHT / 2;
 	/** Short enough that the longest English XP line ("3584/3585 XP to the next level") fits before the pin. */
 	public static final int XP_BAR_WIDTH = 90;
-	public static final int XP_BAR_HEIGHT = 5;
-	public static final int XP_BAR_Y = XP_ROW_CENTER_Y - XP_BAR_HEIGHT / 2;
+	public static final int XP_BAR_Y = XP_ROW_CENTER_Y - TreeXpBar.HEIGHT / 2;
 	/** Between the XP bar and its numbers, and between the numbers and the pin button. */
 	public static final int XP_TEXT_GAP = 6;
 	public static final int PIN_SIZE = 13;
@@ -94,25 +100,29 @@ public final class TalentTreeLayout {
 	/** Where the tab's icon goes inside it, as in the advancements screen. */
 	public static final int TAB_ICON_X = 10;
 	public static final int TAB_ICON_Y = 5;
+	/** How far the tabs reach left of the window. */
+	private static final int TABS_LEFT = TAB_WIDTH - TAB_OVERLAP;
+
+	/** The window's width, whatever the screen size. */
+	public static final int WIDTH = 2 * BORDER + 2 * TREE_SIDE_PADDING + COLUMNS * COLUMN_PITCH - COLUMN_GAP;
+	/** The tabs and the window side by side: 320, the narrowest GUI-scaled screen. */
+	public static final int TOTAL_WIDTH = TABS_LEFT + WIDTH;
 
 	private final int left;
 	private final int top;
-	private final int width;
 	private final int height;
 	private final int rowGap;
 	private final Map<Talent, Vector2i> nodes = new EnumMap<>(Talent.class);
 	private final Map<TalentTree, List<Connector>> connectors = new EnumMap<>(TalentTree.class);
 
 	private TalentTreeLayout(int screenWidth, int screenHeight) {
-		int tabsLeft = TAB_WIDTH - TAB_OVERLAP;
 		int fixedHeight = TREE_TOP + ROWS * NODE_FOOTPRINT + TREE_PADDING + BORDER;
 		int spare = (screenHeight - fixedHeight) / Math.max(1, ROWS - 1);
 		this.rowGap = Math.clamp(spare, MIN_ROW_GAP, MAX_ROW_GAP);
 
-		this.width = 2 * BORDER + 2 * TREE_PADDING + COLUMNS * COLUMN_PITCH - COLUMN_GAP;
 		this.height = fixedHeight + (ROWS - 1) * this.rowGap;
 		// Centered with the tabs; if the screen is too small, keep the tabs and header on screen rather than the bottom.
-		this.left = Math.max(0, (screenWidth - tabsLeft - this.width) / 2) + tabsLeft;
+		this.left = Math.max(0, (screenWidth - TOTAL_WIDTH) / 2) + TABS_LEFT;
 		this.top = Math.max(0, (screenHeight - this.height) / 2);
 
 		for (TalentTree tree : TalentTree.values()) {
@@ -157,7 +167,7 @@ public final class TalentTreeLayout {
 		}
 
 		double middleColumn = (minColumn + maxColumn) / 2.0;
-		int middleX = this.left + this.width / 2;
+		int middleX = this.left + WIDTH / 2;
 
 		for (Talent talent : tree.talents()) {
 			int centerX = middleX + (int) Math.round((talent.column() - middleColumn) * COLUMN_PITCH);
@@ -196,19 +206,6 @@ public final class TalentTreeLayout {
 		return this.top;
 	}
 
-	public int width() {
-		return this.width;
-	}
-
-	public int height() {
-		return this.height;
-	}
-
-	/** The room between two rows of nodes at this screen size, from {@link #MIN_ROW_GAP} to {@link #MAX_ROW_GAP}. */
-	public int rowGap() {
-		return this.rowGap;
-	}
-
 	/** Left edge of the dark area that holds the tree. */
 	public int insideLeft() {
 		return this.left + BORDER;
@@ -220,7 +217,7 @@ public final class TalentTreeLayout {
 	}
 
 	public int insideWidth() {
-		return this.width - 2 * BORDER;
+		return WIDTH - 2 * BORDER;
 	}
 
 	public int insideHeight() {
@@ -285,7 +282,7 @@ public final class TalentTreeLayout {
 
 	/** Top left corner of the pin button, at the right end of the header's XP line. */
 	public Vector2i pinPosition() {
-		return new Vector2i(this.left + this.width - HEADER_X - PIN_SIZE, this.top + PIN_Y);
+		return new Vector2i(this.left + WIDTH - HEADER_X - PIN_SIZE, this.top + PIN_Y);
 	}
 
 	/** Middle of the pin button. */
@@ -302,7 +299,7 @@ public final class TalentTreeLayout {
 
 	/** The widest the XP numbers after the bar can be before they reach the pin button. */
 	public int xpTextMaxWidth() {
-		return this.width - 2 * HEADER_X - XP_BAR_WIDTH - XP_TEXT_GAP - PIN_SIZE - XP_TEXT_GAP;
+		return WIDTH - 2 * HEADER_X - XP_BAR_WIDTH - XP_TEXT_GAP - PIN_SIZE - XP_TEXT_GAP;
 	}
 
 	/** The line for one prereq into one node. It lights up when that prereq is met. */

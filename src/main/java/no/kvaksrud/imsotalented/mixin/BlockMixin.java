@@ -14,7 +14,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Quarrying puts every drop in front of the player. Block drops all spawn through the private {@code popResource}
+ * Quarrying puts every drop at the player's feet. Block drops all spawn through the private {@code popResource}
  * that takes the item entity's factory, and block experience through {@code popExperience}; both only move anything
  * while a quarry runs ({@link Quarrying#gather}).
  */

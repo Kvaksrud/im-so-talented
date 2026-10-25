@@ -10,9 +10,13 @@ import net.minecraft.util.ARGB;
  * next to the vanilla one without a texture of its own. Used by the talent screen's header and the HUD.
  */
 public final class TreeXpBar {
+	/** The vanilla XP bar's height. */
 	public static final int HEIGHT = 5;
-	/** The vanilla track is this wide; a shorter bar keeps its left part and its right end cap. */
-	private static final int TRACK_WIDTH = 182;
+	/**
+	 * The vanilla XP bar's width, and so the widest this bar gets: a shorter bar keeps the track's left part and its
+	 * right end cap.
+	 */
+	public static final int FULL_WIDTH = 182;
 	private static final Identifier TRACK_SPRITE = Identifier.withDefaultNamespace("hud/experience_bar_background");
 	/** The fill's top, middle and bottom rows: the vanilla progress sprite is brightest in the middle, too. */
 	private static final float TOP_ROW_SHADE = 0.85F;
@@ -24,17 +28,17 @@ public final class TreeXpBar {
 	}
 
 	/**
-	 * Draws the bar with its top left corner at {@code x}, {@code y}, {@code width} wide (at most 182), filled to
-	 * {@code fraction} in {@code color} (ARGB).
+	 * Draws the bar with its top left corner at {@code x}, {@code y}, {@code width} wide (at most {@link #FULL_WIDTH}),
+	 * filled to {@code fraction} in {@code color} (ARGB).
 	 */
 	public static void extract(GuiGraphicsExtractor graphics, int x, int y, int width, float fraction, int color) {
-		int trackWidth = Math.min(width, TRACK_WIDTH);
+		int trackWidth = Math.min(width, FULL_WIDTH);
 
-		if (trackWidth == TRACK_WIDTH) {
-			graphics.blitSprite(RenderPipelines.GUI_TEXTURED, TRACK_SPRITE, x, y, TRACK_WIDTH, HEIGHT);
+		if (trackWidth == FULL_WIDTH) {
+			graphics.blitSprite(RenderPipelines.GUI_TEXTURED, TRACK_SPRITE, x, y, FULL_WIDTH, HEIGHT);
 		} else {
-			graphics.blitSprite(RenderPipelines.GUI_TEXTURED, TRACK_SPRITE, TRACK_WIDTH, HEIGHT, 0, 0, x, y, trackWidth - 1, HEIGHT);
-			graphics.blitSprite(RenderPipelines.GUI_TEXTURED, TRACK_SPRITE, TRACK_WIDTH, HEIGHT, TRACK_WIDTH - 1, 0, x + trackWidth - 1, y, 1, HEIGHT);
+			graphics.blitSprite(RenderPipelines.GUI_TEXTURED, TRACK_SPRITE, FULL_WIDTH, HEIGHT, 0, 0, x, y, trackWidth - 1, HEIGHT);
+			graphics.blitSprite(RenderPipelines.GUI_TEXTURED, TRACK_SPRITE, FULL_WIDTH, HEIGHT, FULL_WIDTH - 1, 0, x + trackWidth - 1, y, 1, HEIGHT);
 		}
 
 		// The track's outline stays: only its three inner rows fill, between the end caps. Rounded down, so it's only

@@ -5,7 +5,6 @@ Run from anywhere:  python3 tools/gen_textures.py
 Writes the PNG into src/main/resources/assets/imsotalented/ and an enlarged preview into build/texture-preview/.
 """
 import math
-import random
 import struct
 import zlib
 from pathlib import Path
@@ -38,13 +37,6 @@ class Canvas:
         for yy in range(y, y + h):
             for xx in range(x, x + w):
                 self.set(xx, yy, c)
-
-    def paste(self, other, ox, oy):
-        for y in range(other.h):
-            for x in range(other.w):
-                c = other.px[y][x]
-                if c[3]:
-                    self.set(ox + x, oy + y, c)
 
     def scaled(self, k):
         out = Canvas(self.w * k, self.h * k)
@@ -81,7 +73,7 @@ def pick(palette, t):
     return palette[max(0, min(len(palette) - 1, int(t * len(palette))))]
 
 
-def orb(canvas, cx, cy, r, palette, highlight=(-0.4, -0.45), outline=None):
+def orb(canvas, cx, cy, r, palette, highlight=(-0.4, -0.45)):
     """A shaded sphere: brightest towards the upper left, a dark rim, a hot spot."""
     hx, hy = cx + highlight[0] * r, cy + highlight[1] * r
     for y in range(canvas.h):
@@ -94,8 +86,6 @@ def orb(canvas, cx, cy, r, palette, highlight=(-0.4, -0.45), outline=None):
             rim = d / r
             t = light * 0.95 - max(0.0, rim - 0.78) * 1.2
             canvas.set(x, y, pick(palette, max(0.0, t)))
-    if outline:
-        ring(canvas, cx, cy, r, r + 1.0, outline)
 
 
 def ring(canvas, cx, cy, r_in, r_out, palette, spread=0.45):

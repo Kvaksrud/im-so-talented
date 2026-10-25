@@ -26,6 +26,6 @@ public abstract class ItemStackDurabilityMixin {
 			at = @At(value = "INVOKE", target = "Lnet/minecraft/world/item/enchantment/EnchantmentHelper;processDurabilityChange(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/world/item/ItemStack;I)I"))
 	private int imsotalented$carefulHands(ServerLevel level, ItemStack stack, int amount, Operation<Integer> original,
 			@Local(argsOnly = true) ServerPlayer player) {
-		return CarefulHands.damageWithTalent(level, stack, amount, player, amount2 -> original.call(level, stack, amount2));
+		return CarefulHands.damageWithTalent(level, stack, amount, player, damage -> original.call(level, stack, damage));
 	}
 }

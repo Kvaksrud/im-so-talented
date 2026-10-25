@@ -6,15 +6,12 @@
 		"ApplyBonusCountMixin",
 		"BlockMixin",
 		"BonusLevelTableConditionMixin",
-		"CocoaGrowthMixin",
-		"CropBlockGrowthMixin",
 		"EnchantmentHelperMixin",
+		"FastGrowthMixin",
 		"ItemStackDurabilityMixin",
 		"LivingEntityMixin",
-		"NetherWartGrowthMixin",
-		"PlayerMixin",
-		"ServerPlayerGameModeMixin",
-		"SweetBerryBushGrowthMixin"
+		"PlayerTalentMixin",
+		"ServerPlayerGameModeMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

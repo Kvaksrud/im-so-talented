@@ -28,7 +28,7 @@ public class BackpackScreen extends AbstractContainerScreen<BackpackMenu> {
 	private static final Component LOCKED_TOOLTIP = Component.translatable("container.imsotalented.backpack.locked_slot");
 
 	public BackpackScreen(BackpackMenu menu, Inventory inventory, Component title) {
-		super(menu, inventory, title, 176, 114 + BackpackMenu.ROWS * BackpackMenu.SLOT_SIZE);
+		super(menu, inventory, title, DEFAULT_IMAGE_WIDTH, 114 + BackpackMenu.ROWS * BackpackMenu.SLOT_SIZE);
 	}
 
 	@Override
@@ -39,7 +39,7 @@ public class BackpackScreen extends AbstractContainerScreen<BackpackMenu> {
 		graphics.blit(RenderPipelines.GUI_TEXTURED, CONTAINER_BACKGROUND, this.leftPos, this.topPos, 0.0F, 0.0F, this.imageWidth, gridHeight, 256, 256);
 		graphics.blit(RenderPipelines.GUI_TEXTURED, CONTAINER_BACKGROUND, this.leftPos, this.topPos + gridHeight, 0.0F, 126.0F, this.imageWidth, 96, 256, 256);
 
-		for (int i = this.menu.unlockedSlots(); i < BackpackMenu.EXTRA_SLOTS; i++) {
+		for (int i = this.menu.unlockedSlots(); i < BackpackMenu.BACKPACK_SLOTS; i++) {
 			Slot slot = this.menu.getSlot(i);
 			int x = this.leftPos + slot.x;
 			int y = this.topPos + slot.y;
@@ -51,7 +51,7 @@ public class BackpackScreen extends AbstractContainerScreen<BackpackMenu> {
 	@Override
 	protected void extractLabels(GuiGraphicsExtractor graphics, int xm, int ym) {
 		super.extractLabels(graphics, xm, ym);
-		Component unlocked = Component.translatable("container.imsotalented.backpack.unlocked", this.menu.unlockedSlots(), BackpackMenu.EXTRA_SLOTS);
+		Component unlocked = Component.translatable("container.imsotalented.backpack.unlocked", this.menu.unlockedSlots(), BackpackMenu.BACKPACK_SLOTS);
 		graphics.text(this.font, unlocked, this.imageWidth - this.titleLabelX - this.font.width(unlocked), this.titleLabelY, LABEL_COLOR, false);
 	}
 
@@ -71,7 +71,7 @@ public class BackpackScreen extends AbstractContainerScreen<BackpackMenu> {
 	 */
 	@Override
 	public boolean keyPressed(KeyEvent event) {
-		if (BackpackClient.OPEN_KEY.matches(event)) {
+		if (BackpackClient.OPEN_BACKPACK.matches(event)) {
 			this.onClose();
 			return true;
 		}
@@ -80,7 +80,7 @@ public class BackpackScreen extends AbstractContainerScreen<BackpackMenu> {
 	}
 
 	private boolean isOverLockedSlot(int mouseX, int mouseY) {
-		for (int i = this.menu.unlockedSlots(); i < BackpackMenu.EXTRA_SLOTS; i++) {
+		for (int i = this.menu.unlockedSlots(); i < BackpackMenu.BACKPACK_SLOTS; i++) {
 			Slot slot = this.menu.getSlot(i);
 
 			if (this.isHovering(slot.x, slot.y, 16, 16, mouseX, mouseY)) {

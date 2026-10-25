@@ -123,6 +123,18 @@ public enum Talent {
 		return this.toggleable;
 	}
 
+	/**
+	 * Whether the talent does anything yet. The ones that don't have their place in the tree and their numbers, but
+	 * can't be bought ({@link Talents.BuyResult#NOT_YET}) or toggled until their effect is written, so nobody spends
+	 * a point on nothing.
+	 */
+	public boolean implemented() {
+		return switch (this) {
+			case LIFESTEAL, SECOND_WIND, FIRE_RESISTANCE, WATER_BREATHING, NIGHT_VISION, GLIDING, FLIGHT_SPEED -> false;
+			default -> true;
+		};
+	}
+
 	/** The talent's row in its tree's tab: 0 for the root, one more per step down. */
 	public int row() {
 		return this.row;

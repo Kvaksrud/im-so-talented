@@ -55,7 +55,7 @@ public final class CarefulHands {
 			return 0;
 		}
 
-		return TalentValues.unbreakingBonus(Talents.level(player, Talent.CAREFUL_HANDS));
+		return TalentValues.unbreakingBonus(Talents.effectiveLevel(player, Talent.CAREFUL_HANDS));
 	}
 
 	/**

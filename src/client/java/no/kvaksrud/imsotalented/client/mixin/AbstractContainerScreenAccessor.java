@@ -5,7 +5,7 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 
-/** Where a container screen's panel is: it moves when the recipe book opens, and there's no public getter. */
+/** Where a container screen's panel is and how wide: it moves when the recipe book opens, and there's no public getter. */
 @Mixin(AbstractContainerScreen.class)
 public interface AbstractContainerScreenAccessor {
 	@Accessor("leftPos")
@@ -13,4 +13,7 @@ public interface AbstractContainerScreenAccessor {
 
 	@Accessor("topPos")
 	int imsotalented$topPos();
+
+	@Accessor("imageWidth")
+	int imsotalented$imageWidth();
 }

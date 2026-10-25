@@ -24,9 +24,9 @@ import net.minecraft.world.item.ItemStack;
 public class BackpackMenu extends AbstractContainerMenu {
 	public static final int COLUMNS = 9;
 	public static final int ROWS = TalentValues.MAX_BACKPACK_SLOTS / COLUMNS;
-	public static final int EXTRA_SLOTS = TalentValues.MAX_BACKPACK_SLOTS;
+	public static final int BACKPACK_SLOTS = TalentValues.MAX_BACKPACK_SLOTS;
 	public static final int SLOT_SIZE = 18;
-	/** Where the top left extra slot's item sits, from the panel's corner; the same as a chest. */
+	/** Where the top left backpack slot's item sits, from the panel's corner; the same as a chest. */
 	public static final int GRID_LEFT = 8;
 	public static final int GRID_TOP = 18;
 
@@ -35,7 +35,7 @@ public class BackpackMenu extends AbstractContainerMenu {
 
 	/** The client's menu: the server fills the slots and the unlocked count. */
 	public BackpackMenu(int containerId, Inventory inventory) {
-		this(containerId, inventory, new SimpleContainer(EXTRA_SLOTS), DataSlot.standalone());
+		this(containerId, inventory, new SimpleContainer(BACKPACK_SLOTS), DataSlot.standalone());
 	}
 
 	/** The server's menu, on the player's own backpack, with the unlocked count read from their talents. */
@@ -55,13 +55,13 @@ public class BackpackMenu extends AbstractContainerMenu {
 
 	private BackpackMenu(int containerId, Inventory inventory, Container container, DataSlot unlockedSlots) {
 		super(Backpacks.MENU, containerId);
-		checkContainerSize(container, EXTRA_SLOTS);
+		checkContainerSize(container, BACKPACK_SLOTS);
 		this.container = container;
 		this.unlockedSlots = this.addDataSlot(unlockedSlots);
 
 		for (int row = 0; row < ROWS; row++) {
 			for (int column = 0; column < COLUMNS; column++) {
-				this.addSlot(new ExtraSlot(container, column + row * COLUMNS, GRID_LEFT + column * SLOT_SIZE, GRID_TOP + row * SLOT_SIZE));
+				this.addSlot(new BackpackSlot(container, column + row * COLUMNS, GRID_LEFT + column * SLOT_SIZE, GRID_TOP + row * SLOT_SIZE));
 			}
 		}
 
@@ -70,15 +70,12 @@ public class BackpackMenu extends AbstractContainerMenu {
 
 	/** How many backpack slots, counted from the first, the player can use. */
 	public int unlockedSlots() {
-		return Math.clamp(this.unlockedSlots.get(), 0, EXTRA_SLOTS);
+		return Math.clamp(this.unlockedSlots.get(), 0, BACKPACK_SLOTS);
 	}
 
-	public boolean isUnlocked(int extraSlot) {
-		return extraSlot < this.unlockedSlots();
-	}
-
-	public Container getContainer() {
-		return this.container;
+	/** Whether this backpack slot (0 to {@link #BACKPACK_SLOTS} - 1, not a menu slot index) can be used. */
+	public boolean isUnlocked(int backpackSlot) {
+		return backpackSlot < this.unlockedSlots();
 	}
 
 	/** Closes (on the server) once the talents no longer unlock any slot, like after a reset. */
@@ -97,8 +94,8 @@ public class BackpackMenu extends AbstractContainerMenu {
 			ItemStack stack = slot.getItem();
 			clicked = stack.copy();
 
-			if (slotIndex < EXTRA_SLOTS) {
-				if (!this.moveItemStackTo(stack, EXTRA_SLOTS, this.slots.size(), true)) {
+			if (slotIndex < BACKPACK_SLOTS) {
+				if (!this.moveItemStackTo(stack, BACKPACK_SLOTS, this.slots.size(), true)) {
 					return ItemStack.EMPTY;
 				}
 			} else if (!this.moveItemStackTo(stack, 0, this.unlockedSlots(), false)) {
@@ -116,9 +113,9 @@ public class BackpackMenu extends AbstractContainerMenu {
 		return clicked;
 	}
 
-	/** An extra slot that only works while the talent unlocks it. */
-	private final class ExtraSlot extends Slot {
-		ExtraSlot(Container container, int slot, int x, int y) {
+	/** A backpack slot that only works while the talent unlocks it. */
+	private final class BackpackSlot extends Slot {
+		BackpackSlot(Container container, int slot, int x, int y) {
 			super(container, slot, x, y);
 		}
 

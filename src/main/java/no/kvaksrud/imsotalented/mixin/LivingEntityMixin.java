@@ -6,6 +6,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.llamalad7.mixinextras.sugar.Local;
 import no.kvaksrud.imsotalented.effect.BlockChance;
+import no.kvaksrud.imsotalented.effect.DamageCooldown;
 import no.kvaksrud.imsotalented.effect.ShieldMastery;
 import no.kvaksrud.imsotalented.effect.SwimSpeed;
 import no.kvaksrud.imsotalented.effect.TreeXp;
@@ -28,9 +29,9 @@ import net.minecraft.world.phys.Vec3;
 
 /**
  * Both hurtServer hooks sit at HEAD. Mixin applies them in declaration order, so weapon damage runs first and the block
- * roll's damage-cooldown check sees the damage that would really land. Beyond that the order doesn't matter: the damage
- * change has no side effects, and a blocked hit deals nothing whatever its damage. The tree XP wrap goes around the
- * whole method, those two hooks included, so it sees every outcome of a hit.
+ * roll's damage-cooldown check, and the cooldown a shrug starts, see the damage that would really land. Beyond that the
+ * order doesn't matter: the damage change has no side effects. The tree XP wrap goes around the whole method, those
+ * two hooks included, so it sees every outcome of a hit.
  * <p>
  * Players reach this through Player.hurtServer and ServerPlayer.hurtServer, so creative, PvP and difficulty have
  * already been dealt with by then.
@@ -49,13 +50,24 @@ public abstract class LivingEntityMixin {
 		return WeaponDamage.modify(source, damage);
 	}
 
-	/** Block Chance: a lucky player takes nothing from this attack. */
+	/**
+	 * Block Chance: a lucky player takes nothing from this attack. The shrug starts the damage cooldown (or raises its
+	 * mark) as a hit that landed would, so the rest of a crowd's swings in the window are cut down as vanilla cuts them,
+	 * instead of landing in full.
+	 */
 	@Inject(
 			method = "hurtServer(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/world/damagesource/DamageSource;F)Z",
 			at = @At("HEAD"),
 			cancellable = true)
 	private void imsotalented$blockChance(ServerLevel level, DamageSource source, float damage, CallbackInfoReturnable<Boolean> cir) {
-		if ((Object) this instanceof ServerPlayer player && BlockChance.tryBlock(player, source, damage, this.lastHurt)) {
+		if ((Object) this instanceof ServerPlayer player && BlockChance.tryBlock(player, level, source, damage, this.lastHurt)) {
+			// Block Chance only rolls for hits vanilla wouldn't ignore, so one in the cooldown is harder than lastHurt
+			// and raises it without restarting the cooldown, as it would have if it had landed.
+			if (!DamageCooldown.inCooldown(player, source)) {
+				player.damageCooldownTime = DamageCooldown.TICKS;
+			}
+
+			this.lastHurt = damage;
 			cir.setReturnValue(false);
 		}
 	}
@@ -65,7 +77,8 @@ public abstract class LivingEntityMixin {
 	 * damage before armor, ALLOW_DAMAGE comes after Block Chance has already cancelled at HEAD, and AFTER_DEATH has no
 	 * amount. Wrapping the whole method sees the health before and after (Warrior counts what the mob really lost, the
 	 * killing blow included) and the raw damage of every hit on a player, whether it landed, a shield took it or Block
-	 * Chance shrugged it off (Guardian). Hits that can't earn anything go straight through.
+	 * Chance shrugged it off (Guardian). Whether vanilla will turn a hit on a player away before its cooldown is asked
+	 * before the hit, since a killing blow leaves the player dying. Hits that can't earn anything go straight through.
 	 */
 	@WrapMethod(method = "hurtServer(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/world/damagesource/DamageSource;F)Z")
 	private boolean imsotalented$treeXp(ServerLevel level, DamageSource source, float damage, Operation<Boolean> original) {
@@ -76,10 +89,9 @@ public abstract class LivingEntityMixin {
 		}
 
 		float healthBefore = self.getHealth();
-		int cooldownBefore = self.damageCooldownTime;
-		float lastHurtBefore = this.lastHurt;
+		boolean rejected = self instanceof ServerPlayer && DamageCooldown.rejectsBeforeCooldown(self, level, source);
 		boolean hurt = original.call(level, source, damage);
-		TreeXp.afterHurt(self, source, damage, healthBefore, cooldownBefore, lastHurtBefore);
+		TreeXp.afterHurt(self, source, damage, healthBefore, rejected);
 		return hurt;
 	}
 
@@ -92,12 +104,9 @@ public abstract class LivingEntityMixin {
 	}
 
 	/**
-	 * Swim Speed (TOGGLEABLE): the per-tick underwater damping that {@code travelInWater} multiplies the
-	 * horizontal velocity by (0.8 vanilla, 0.9 sprinting, 0.96 with Dolphin's Grace) is softened for a
-	 * talented swimmer, so their sustained in-water movement is 1 + 0.1 per level. This is the first
-	 * mixin that reads a TOGGLEABLE talent's EFFECTIVE level — 0 while the talent is toggled off, so the
-	 * toggle removes the bonus — through the same one-call choke point every other effect uses; gliding
-	 * and the fun talents (P8/P9) copy this read.
+	 * Swim Speed: the per-tick underwater damping that {@code travelInWater} multiplies the horizontal velocity by
+	 * (0.8 vanilla, 0.9 sprinting, 0.96 with Dolphin's Grace) is softened for a talented swimmer, so their sustained
+	 * in-water movement is 1 + 0.1 per level. The talent can be switched off, and its effective level is 0 then.
 	 */
 	@WrapOperation(
 			method = "travelInWater(Lnet/minecraft/world/phys/Vec3;DZD)V",
@@ -107,15 +116,16 @@ public abstract class LivingEntityMixin {
 			return original.call(velocity, x, y, z);
 		}
 
-		int level = Talents.data(player).effectiveLevel(Talent.SWIM_SPEED);
+		int level = Talents.effectiveLevel(player, Talent.SWIM_SPEED);
+
 		if (level <= 0) {
 			return original.call(velocity, x, y, z);
 		}
 
 		// double locals on purpose: Operation.call takes Object..., and a float expression would autobox to
 		// Float, which the generated bridge casts to Double and rejects (ClassCastException at runtime).
-		double fx = SwimSpeed.dampFactor((float) x, level);
-		double fz = SwimSpeed.dampFactor((float) z, level);
-		return original.call(velocity, fx, y, fz);
+		double dampX = SwimSpeed.dampFactor((float) x, level);
+		double dampZ = SwimSpeed.dampFactor((float) z, level);
+		return original.call(velocity, dampX, y, dampZ);
 	}
 }
