@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.0
 Everything here is compared with 0.1.0. **Talents are reset when you update** (see the last item).
 
 - **Four talent trees with their own XP.** The four branches are now trees, each a tab in the talent screen: Gatherer (mining, farming, hauling), Warrior (weapons), Guardian (health, armor, the elements) and Explorer (moving around). Each tree has its own XP, earned only by its own activity: mining (5 per ore, a tenth of that for any other block a pickaxe mines, at most one such block every half second), harvesting fully grown crops and fishing for Gatherer; damage you deal to hostile mobs for Warrior; damage hostile mobs aim at you for Guardian, counted once per damage cooldown like vanilla damage; travelling under your own power and entering new chunks for Explorer (gliding pays half). Every tree level is one talent point to spend in that tree. Level n to n + 1 takes `ceil(level_cost_base * level_cost_growth^n)` tree XP, with defaults of 25 and 1.18.
