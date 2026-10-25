@@ -149,7 +149,7 @@ Install the same version on the server and on every player's client. On a server
 
 **The client game test** plays through the main flows in survival and takes screenshots into `build/run/clientGameTest/screenshots/` (prefixed `ist_`).
 
-**Art:** `python3 tools/gen_textures.py` redraws the mod icon using only Python's standard library, with an enlarged preview in `build/texture-preview/`.
+**Art:** `python3 tools/gen_textures.py` redraws the mod icon (the XP root branching to the four trees' colors) using only Python's standard library. It also writes the 512 x 512 project logo for CurseForge and Modrinth, `build/texture-preview/logo-512.png`, and an enlarged preview.
 
 **CI and releases.** Once the project has a GitHub remote, `.github/workflows/build.yml` validates the Gradle wrapper, builds every push and pull request from a clean checkout and runs the unit tests. On `main`, the first push of a new `mod_version` publishes a GitHub release with the jar, as soon as `CHANGELOG.md` has a `## <mod_version>` section that isn't marked `(unreleased)`; that section becomes the release notes. To release: finish the version's CHANGELOG section, drop the `(unreleased)`, bump `mod_version` in `gradle.properties` if it isn't already, and push.
 

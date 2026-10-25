@@ -2,7 +2,8 @@
 """Draws the mod icon as pixel art, using only the standard library.
 
 Run from anywhere:  python3 tools/gen_textures.py
-Writes the PNG into src/main/resources/assets/imsotalented/ and an enlarged preview into build/texture-preview/.
+Writes icon.png (128 x 128) into src/main/resources/assets/imsotalented/, and a 512 x 512 project logo
+(for CurseForge and Modrinth) and an enlarged preview into build/texture-preview/.
 """
 import math
 import struct
@@ -64,8 +65,11 @@ class Canvas:
 
 GOLD = [hex_color(c) for c in ("#6B430A", "#9C6610", "#CF961A", "#F2C83E", "#FFEE9A")]
 XP = [hex_color(c) for c in ("#245A08", "#3F8E10", "#69C11E", "#A6EC3A", "#DDFF80", "#FBFFD8")]
-AMETHYST = [hex_color(c) for c in ("#35205F", "#5C379E", "#8D61D6", "#C3A2FF")]
-DIAMOND = [hex_color(c) for c in ("#0F5F62", "#22A3A0", "#5FE3DA", "#CFFFF8")]
+# The four talent trees' colors, as in the game's tabs and XP bars.
+GATHERER = [hex_color(c) for c in ("#6B3F0A", "#A8650F", "#E0A440", "#F5C76A", "#FFE7A8")]
+WARRIOR = [hex_color(c) for c in ("#5E1410", "#9E2A20", "#E0503E", "#F28A78", "#FFC8BC")]
+GUARDIAN = [hex_color(c) for c in ("#13305E", "#1F5296", "#3F86D8", "#7FB6F2", "#C9E2FF")]
+EXPLORER = [hex_color(c) for c in ("#0B4A48", "#137A76", "#2FB5AE", "#6EDDD5", "#C2FFF9")]
 
 
 def pick(palette, t):
@@ -144,28 +148,29 @@ def outline(canvas, color):
 
 
 def icon():
-    """A talent tree: an XP orb with a star as the root, branching down to three smaller talent nodes."""
+    """A talent tree: an XP orb with a star as the root, branching down to one node per talent tree, in its color.
+    32 x 32 pixels; the mod icon and the logo are whole-number scales of it."""
     n = 32
     c = Canvas(n, n)
     ink = hex_color("#140C22")
-    root = (16, 11)
-    bar_y = 22
-    nodes = [(5.5, 27.5, DIAMOND), (16, 27.5, AMETHYST), (26.5, 27.5, XP)]
+    root, root_r = (16, 10.5), 7.4
+    bar_y, node_y = 21, 27
+    xs = [4.5, 12.17, 19.83, 27.5]
     # branches first, so the nodes sit on top of them: a stem, a bar, and a drop to each node
     line(c, root[0], root[1], root[0], bar_y, 2.2, GOLD[2])
-    line(c, nodes[0][0], bar_y, nodes[-1][0], bar_y, 2.2, GOLD[2])
-    for nx, ny, _ in nodes:
-        line(c, nx, bar_y, nx, ny, 2.2, GOLD[2])
+    line(c, xs[0], bar_y, xs[-1], bar_y, 2.2, GOLD[2])
+    for x in xs:
+        line(c, x, bar_y, x, node_y, 2.2, GOLD[2])
     for y in range(n):  # light the top edge of the branches
         for x in range(n):
             if c.get(x, y) == GOLD[2] and (y == 0 or c.get(x, y - 1) != GOLD[2]):
                 c.set(x, y, GOLD[3])
-    for nx, ny, palette in nodes:
-        ring(c, nx, ny, 2.5, 3.7, GOLD)
-        orb(c, nx, ny, 2.5, palette)
-    ring(c, root[0], root[1], 8.6, 9.9, GOLD)
-    orb(c, root[0], root[1], 8.6, XP[:5])  # no near-white, so the star stands out
-    star = star_points(root[0], root[1] + 0.5, 6.3, 2.6)
+    for x, palette in zip(xs, (GATHERER, WARRIOR, GUARDIAN, EXPLORER)):
+        ring(c, x, node_y, 2.4, 3.5, GOLD)
+        orb(c, x, node_y, 2.4, palette)
+    ring(c, root[0], root[1], root_r, root_r + 1.3, GOLD)
+    orb(c, root[0], root[1], root_r, XP[:5])  # no near-white, so the star stands out
+    star = star_points(root[0], root[1] + 0.5, root_r * 0.73, root_r * 0.3)
     shape = {(x, y) for y in range(n) for x in range(n) if inside(star, x + 0.5, y + 0.5)}
     for x, y in shape:
         # lit upper half, deeper gold lower half
@@ -175,18 +180,18 @@ def icon():
         for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
             if (x + dx, y + dy) not in shape:
                 c.set(x + dx, y + dy, GOLD[0])
-    c.set(10, 5, XP[5])
-    c.set(9, 6, XP[5])
     outline(c, ink)
-    return c.scaled(4)
+    return c
 
 
 def main():
-    outputs = {"icon.png": icon()}
-    for rel, canvas in outputs.items():
-        canvas.save(ASSETS / rel)
-        canvas.scaled(2).save(PREVIEW / Path(rel).name)
-        print("wrote", ASSETS / rel)
+    art = icon()
+    art.scaled(4).save(ASSETS / "icon.png")
+    print("wrote", ASSETS / "icon.png")
+    # The project logo for CurseForge and Modrinth, which want a square of at least 400 x 400.
+    art.scaled(16).save(PREVIEW / "logo-512.png")
+    print("wrote", PREVIEW / "logo-512.png")
+    art.scaled(8).save(PREVIEW / "icon.png")
     print("preview in", PREVIEW)
 
 
