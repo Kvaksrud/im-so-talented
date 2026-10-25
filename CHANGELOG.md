@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+- The license is now **CC BY-NC 4.0** (Attribution-NonCommercial): you may share and modify the mod, including in modpacks, with credit and not commercially. 0.2.0 and earlier were released under CC0 1.0 and stay that way.
+- New icon: the XP root branching to the four trees' colors.
+
 ## 0.2.0
 Everything here is compared with 0.1.0. **Talents are reset when you update** (see the last item).
 

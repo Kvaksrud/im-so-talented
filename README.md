@@ -169,4 +169,4 @@ Under `src/client/java/no/kvaksrud/imsotalented/client/`: the tabbed talent scre
 - A way to reset your talents and spend the points again.
 
 ## License
-CC0-1.0
+[Creative Commons Attribution-NonCommercial 4.0](https://creativecommons.org/licenses/by-nc/4.0/) (CC BY-NC 4.0); the full text is in `LICENSE`. You may share and modify the mod, including in modpacks, as long as you credit it and don't use it commercially. Versions up to and including 0.2.0 were released under CC0 1.0 and stay that way.
